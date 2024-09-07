@@ -1,0 +1,14 @@
+# ignoring various files and directories
+ctrl/config.yaml
+ctrl/*.xlsx
+ctrl/*.png
+in/flow/*
+in/stage/*
+in/nonhand_fim/*
+logs/*
+out/catfim/*
+out/stats/*
+readme.docx
+
+# vscode settings
+.vscode/
