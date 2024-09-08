@@ -82,7 +82,7 @@ logging.basicConfig(format='%(asctime)s %(levelname)-4s %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
 # ===== functions
-def org_usgs(usgs_json):
+def org_usgs(usgs_json, ahps_lid):
     """
     pulls in relevant usgs streamstats for thresholds listed in the global var aep_li
     """
@@ -108,10 +108,10 @@ def org_usgs(usgs_json):
     # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
     if len(org_df.index) > len(aep_li):
         return_df = org_df[org_df['usgs_description'].str.contains("Weighted")] 
-        logging.info('no preferred usgs stats, choose weighted')
+        logging.info(ahps_lid + ' : no preferred usgs stats, choose weighted')
         if return_df.empty == True:
             return_df = org_df[org_df['usgs_description'].str.contains("Maximum")]
-            logging.info('no preferred usgs stats, choose empirical')
+            logging.info(ahps_lid + ' : no preferred usgs stats, choose empirical')
     else:
         return_df = org_df
 
@@ -163,7 +163,7 @@ def get_site_info(mapping_df, request_header, aoi, ds):
         usgs_url = usgs_url_prefix + str(row.usgs_gage)
         usgs_response = http.request('GET', usgs_url, headers=request_header)
         usgs_json = json.loads(usgs_response.data.decode('utf8'))
-        usgs_df = org_usgs(usgs_json)
+        usgs_df = org_usgs(usgs_json, row.ahps_lid)
 
         # as of 2024 Sep, the retro run goes from 1979 Feb to 2023 Feb
         nwm_ds = ds.sel(feature_id=row.nwm_seg)['streamflow'].sel(time=slice('1979-10-01', '2022-09-30'))
