@@ -23,6 +23,7 @@
 # [ ] look at xarray group by, can this be done by coordinate?
 # [ ] perhaps use USGS dataretrieval package, now in python!
 # [ ] need stats on annual peaks?
+# [ ] do filter for low outliers? https://code.usgs.gov/water/stats/MGBT/-/tree/master?ref_type=heads
 
 import os
 import yaml
@@ -179,6 +180,7 @@ def get_site_info(mapping_df, request_header, aoi, ds):
         else:
             site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + out_fn_suffix), index=False, mode='a', header=False)
 
+        external_count += 1
         loop_li.append(site_df)
 
     logging.info('scraping done')
