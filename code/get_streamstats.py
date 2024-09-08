@@ -44,7 +44,7 @@ import pdb
 aep_li = ['0.2', '1', '2', '4', '10', '20', '50']
 
 # ===== debugging var
-start_index = 2
+start_index = 4
 #start_index = 398 # should be used when debugging, otherwise comment out
 
 # ===== directories & filenames (site/computer specific)
@@ -157,33 +157,38 @@ def get_site_info(mapping_df, request_header, aoi, ds):
     loop through getting usgs streamstats and attempted NWM retrospective v3 streamstats
     """
     loop_li = []
-    http = urllib3.PoolManager()
+    
     external_count = 0
     for i, row in mapping_df.iloc[start_index:].iterrows():
+        http = urllib3.PoolManager()
         usgs_url = usgs_url_prefix + str(row.usgs_gage)
         usgs_response = http.request('GET', usgs_url, headers=request_header)
         usgs_json = json.loads(usgs_response.data.decode('utf8'))
-        usgs_df = org_usgs(usgs_json, row.ahps_lid)
 
-        # as of 2024 Sep, the retro run goes from 1979 Feb to 2023 Feb
-        nwm_ds = ds.sel(feature_id=row.nwm_seg)['streamflow'].sel(time=slice('1979-10-01', '2022-09-30'))
-        water_yr = (nwm_ds.time.dt.month >=10) + nwm_ds.time.dt.year
-        nwm_ds.coords['water_yr'] = water_yr # https://stackoverflow.com/questions/72268056/python-adding-a-water-year-time-variable-in-an-x-array
-        nwm_df = org_nwm(nwm_ds, water_yr)
-
-        site_df = nwm_df.merge(usgs_df, how='left', on='aep_percent')
-
-        site_df.insert(0, 'ahps_lid', row.ahps_lid)
-
-        print(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(row.usgs_gage))
-        logging.info(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(row.usgs_gage))
-        if external_count == 0 and start_index == 0:
-            site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + out_fn_suffix), index=False)
+        if len(usgs_json) == 0:
+            logging.info(row.ahps_lid + ' missing usgs json or empty page')
         else:
-            site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + out_fn_suffix), index=False, mode='a', header=False)
+            usgs_df = org_usgs(usgs_json, row.ahps_lid)
 
-        external_count += 1
-        loop_li.append(site_df)
+            # as of 2024 Sep, the retro run goes from 1979 Feb to 2023 Feb
+            nwm_ds = ds.sel(feature_id=row.nwm_seg)['streamflow'].sel(time=slice('1979-10-01', '2022-09-30'))
+            water_yr = (nwm_ds.time.dt.month >=10) + nwm_ds.time.dt.year
+            nwm_ds.coords['water_yr'] = water_yr # https://stackoverflow.com/questions/72268056/python-adding-a-water-year-time-variable-in-an-x-array
+            nwm_df = org_nwm(nwm_ds, water_yr)
+
+            site_df = nwm_df.merge(usgs_df, how='left', on='aep_percent')
+
+            site_df.insert(0, 'ahps_lid', row.ahps_lid)
+
+            print(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(row.usgs_gage))
+            logging.info(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(row.usgs_gage))
+            if external_count == 0 and start_index == 0:
+                site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + out_fn_suffix), index=False)
+            else:
+                site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + out_fn_suffix), index=False, mode='a', header=False)
+
+            external_count += 1
+            loop_li.append(site_df)
 
     logging.info('scraping done')
     return_df = pd.concat(loop_li)
