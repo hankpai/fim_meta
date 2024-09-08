@@ -44,7 +44,7 @@ import pdb
 aep_li = ['0.2', '1', '2', '4', '10', '20', '50']
 
 # ===== debugging var
-start_index = 0
+start_index = 2
 #start_index = 398 # should be used when debugging, otherwise comment out
 
 # ===== directories & filenames (site/computer specific)
@@ -108,8 +108,10 @@ def org_usgs(usgs_json):
     # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
     if len(org_df.index) > len(aep_li):
         return_df = org_df[org_df['usgs_description'].str.contains("Weighted")] 
-        if return_df.empty == False:
+        logging.info('no preferred usgs stats, choose weighted')
+        if return_df.empty == True:
             return_df = org_df[org_df['usgs_description'].str.contains("Maximum")]
+            logging.info('no preferred usgs stats, choose empirical')
     else:
         return_df = org_df
 
