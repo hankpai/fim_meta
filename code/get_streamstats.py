@@ -40,10 +40,10 @@ import pdb
 
 # ===== global/user vars (not path related)
 # common AEP's of interest, leaving as strings to avoid potential rounding errors in array intersections
-aep_li = ['0.2', '0.5', '1', '2', '4', '10', '20', '50']
+aep_li = ['0.2', '1', '2', '4', '10', '20', '50']
 
 # ===== debugging var
-start_index = 0
+start_index = 1
 #start_index = 398 # should be used when debugging, otherwise comment out
 
 # ===== directories & filenames (site/computer specific)
@@ -101,11 +101,17 @@ def org_usgs(usgs_json):
 
     org_df = pref_df.iloc[row_idxs][['value', 'yearsofRecord', 'citationID']]
     org_df['aep_percent'] = aep_percent
-    org_df['aep_name'] = stats_meta.iloc[row_idxs]['name']
+    org_df['usgs_name'] = stats_meta.iloc[row_idxs]['name']
+    org_df['usgs_description'] = stats_meta.iloc[row_idxs]['description']
 
-    org_df.rename(columns={'value':'usgsFlow_cfs'}, inplace=True)
+    # if there are many preferred, choose weighted (email 2024 Mar)
+    if len(org_df.index) > len(aep_li):
+        return_df = org_df[org_df['usgs_description'].str.contains("Weighted")] 
+        if return_df.empty == False:
+            return_df = org_df[org_df['usgs_description'].str.contains("Maximum")] 
 
-    return_df = org_df
+    return_df.rename(columns={'value':'usgsFlow_cfs'}, inplace=True).drop(['usgs_description'], axis=1, inplace=True)
+
     return(return_df)
 
 def org_nwm(nwm_ds, water_yr):
@@ -148,14 +154,10 @@ def get_site_info(mapping_df, request_header, aoi, ds):
     http = urllib3.PoolManager()
     esternal_count = 0
     for i, row in mapping_df.iloc[start_index:].iterrows():
-        if row.usgs_gage > 0: # value is zero if usgs_gage is missing
-            usgs_url = usgs_url_prefix + str(row.usgs_gage)
-            usgs_response = http.request('GET', usgs_url, headers=request_header)
-            usgs_json = json.loads(usgs_response.data.decode('utf8'))
-            usgs_df = org_usgs(usgs_json)
-        else:
-            usgs_df = pd.DataFrame(columns=['usgsFlow_cfs','yearsofRecord', 'citationID', 'aep_percent', 'aep_name'])
-            logging.info(row.ahps_lid + ' is not related to a usgs gage, so no gage stats')
+        usgs_url = usgs_url_prefix + str(row.usgs_gage)
+        usgs_response = http.request('GET', usgs_url, headers=request_header)
+        usgs_json = json.loads(usgs_response.data.decode('utf8'))
+        usgs_df = org_usgs(usgs_json)
 
         # as of 2024 Sep, the retro run goes from 1979 Feb to 2023 Feb
         nwm_ds = ds.sel(feature_id=row.nwm_seg)['streamflow'].sel(time=slice('1979-10-01', '2022-09-30'))
@@ -163,7 +165,9 @@ def get_site_info(mapping_df, request_header, aoi, ds):
         nwm_ds.coords['water_yr'] = water_yr # https://stackoverflow.com/questions/72268056/python-adding-a-water-year-time-variable-in-an-x-array
         nwm_df = org_nwm(nwm_ds, water_yr)
 
-        site_df = nwm_df.merge(usgs_df, left_on='aep_percent', right_on='aep_percent', how='left')
+        site_df = nwm_df.merge(usgs_df, how='left', on='aep_percent')
+
+        site_df.insert(0, 'ahps_lid', row.ahps_lid)
 
         print(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(row.usgs_gage))
         if external_count == 0 and start_index == 0:
