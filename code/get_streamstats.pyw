@@ -44,7 +44,7 @@ import pdb
 aep_li = ['0.2', '1', '2', '4', '10', '20', '50']
 
 # ===== debugging var
-start_index = 4
+start_index = 0
 #start_index = 398 # should be used when debugging, otherwise comment out
 
 # ===== directories & filenames (site/computer specific)
@@ -100,10 +100,11 @@ def org_usgs(usgs_json, ahps_lid):
 
     row_idxs = np.nonzero(np.in1d(aep_percent, aep_li))[0].tolist()  # getting row indices from aep percent to then pluck from perf_df
 
-    org_df = pref_df.iloc[row_idxs][['value', 'yearsofRecord', 'citationID']]
-    org_df['aep_percent'] = aep_percent
-    org_df['usgs_name'] = stats_meta.iloc[row_idxs]['name']
-    org_df['usgs_description'] = stats_meta.iloc[row_idxs]['description']
+    org_df = pref_df.iloc[row_idxs][['value', 'yearsofRecord', 'citationID']].reset_index(drop=True)
+    org_df['aep_percent'] = aep_percent[row_idxs].reset_index(drop=True)
+    org_df['usgs_name'] = stats_meta.iloc[row_idxs]['name'].reset_index(drop=True)
+    org_df['usgs_description'] = stats_meta.iloc[row_idxs]['description'].reset_index(drop=True)
+    org_df = org_df[org_df['usgs_description'].notna()]
 
     # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
     if len(org_df.index) > len(aep_li):
