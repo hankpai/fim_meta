@@ -5,7 +5,7 @@
 # last edit comment:    start of USGS and NWM AEP, note NWM stats from USGS Bulletin 17C eq. 11
 
 # summary:
-# aggregates AEP stats from USGS and NWM; note NWM stats from USGS Bulletin 17C eq. 11
+# aggregates AEP stats from USGS; note NWM stats from USGS Bulletin 17C eq. 11 - implemented, but not output as values were >> usgs stats
 
 # things to be careful about:
 # - NWM and AEP calc may have different methods (local regression vs the equation listed in summary)
@@ -13,7 +13,7 @@
 # inputs:
 # - usgs streamstats, example call (from nws gage analysis): https://streamstats.usgs.gov/gagestatsservices/statistics?statisticGroups=pfs&stationIDOrCode=14191000
 #   - use USGS's dataretrieval?: https://doi-usgs.github.io/dataretrieval-python/
-# - nwm AEP stats
+# - nwm AEP stats (not yet implemented, values started straying wildly - given time it took, didn't seem worth it)
 #   - resource for extracting zarr data (hopefully same for NWM v3.0): https://www.hydroshare.org/resource/c4c9f0950c7a42d298ca25e4f6ba5542/
 #   - other resource for v3: https://www.hydroshare.org/resource/6ca065138d764339baf3514ba2f2d72f/
 #   - nwm retrospective: https://registry.opendata.aws/nwm-archive/
@@ -42,6 +42,7 @@ import pdb
 # ===== global/user vars (not path related)
 # common AEP's of interest, leaving as strings to avoid potential rounding errors in array intersections
 aep_li = ['0.2', '1', '2', '4', '10', '20', '50']
+calc_nwm = False
 
 # ===== debugging var
 start_index = 0
@@ -67,7 +68,8 @@ catfim_meta_fn_suffix = '_catFim_meta.csv'
 # output files
 log_fn = 'streamstats.log'
 out_fn_prefix = pd.Timestamp.now().strftime('%Y%m%d') + '_'
-out_fn_suffix = '_streamstats.csv'
+full_usgs_fn_suffix = '_usgs_all_streamstats.csv'
+slim_usgs_fn_suffix = '_usgs_slim_streamstats.csv'
 
 # ===== url info
 usgs_url_prefix = 'https://streamstats.usgs.gov/gagestatsservices/statistics?statisticGroups=pfs&stationIDOrCode='
@@ -88,8 +90,8 @@ def org_usgs(usgs_json, ahps_lid):
     """
     temp_df = pd.DataFrame(usgs_json)
     # taking preferred USGS AEP, note yearsofRecord only taken from empirical AEP (vs. regression/algorithmic AEP)
-    # otherwise yearsofRecord should be NA 
-    pref_df = temp_df[temp_df['isPreferred']==True][['value', 'yearsofRecord', 'citationID', 'regressionType']]
+    # otherwise yearsofRecord should be NA, removed for now 
+    pref_df = temp_df[temp_df['isPreferred']==True][['value', 'citationID', 'regressionType']]
 
     stats_meta = pd.DataFrame(list(pref_df['regressionType']))
 
@@ -100,7 +102,7 @@ def org_usgs(usgs_json, ahps_lid):
 
     row_idxs = np.nonzero(np.in1d(aep_percent, aep_li))[0].tolist()  # getting row indices from aep percent to then pluck from perf_df
 
-    org_df = pref_df.iloc[row_idxs][['value', 'yearsofRecord', 'citationID']].reset_index(drop=True)
+    org_df = pref_df.iloc[row_idxs][['value', 'citationID']].reset_index(drop=True)
     org_df['aep_percent'] = aep_percent[row_idxs].reset_index(drop=True)
     org_df['usgs_name'] = stats_meta.iloc[row_idxs]['name'].reset_index(drop=True)
     org_df['usgs_description'] = stats_meta.iloc[row_idxs]['description'].reset_index(drop=True)
@@ -108,16 +110,21 @@ def org_usgs(usgs_json, ahps_lid):
 
     # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
     if len(org_df.index) > len(aep_li):
-        return_df = org_df[org_df['usgs_description'].str.contains("Weighted")] 
+        assign_pref_df = org_df[org_df['usgs_description'].str.contains("Weighted")] 
         logging.info(ahps_lid + ' : no preferred usgs stats, choose weighted')
-        if return_df.empty == True:
-            return_df = org_df[org_df['usgs_description'].str.contains("Maximum")]
+        if assign_pref_df.empty == True:
+            assign_pref_df = org_df[org_df['usgs_description'].str.contains("Maximum")]
             logging.info(ahps_lid + ' : no preferred usgs stats, choose empirical')
     else:
-        return_df = org_df
+        assign_pref_df = org_df
 
-    return_df.rename(columns={'value':'usgsFlow_cfs'}, inplace=True)
-    return_df.drop(['usgs_description'], axis=1, inplace=True)
+    # some cleaning and sorting
+    numeric_aeps = [float(i) for i in assign_pref_df['aep_percent']]
+    temp_df = assign_pref_df.copy()
+    temp_df['aep_percent'] = numeric_aeps
+    rename_df = assign_pref_df.rename(columns={'value':'usgsFlow_cfs'})
+    sort_df = rename_df.sort_values('aep_percent')
+    return_df = sort_df.drop(['usgs_description'], axis=1)
 
     return(return_df)
 
@@ -171,22 +178,28 @@ def get_site_info(mapping_df, request_header, aoi, ds):
         else:
             usgs_df = org_usgs(usgs_json, row.ahps_lid)
 
-            # as of 2024 Sep, the retro run goes from 1979 Feb to 2023 Feb
-            nwm_ds = ds.sel(feature_id=row.nwm_seg)['streamflow'].sel(time=slice('1979-10-01', '2022-09-30'))
-            water_yr = (nwm_ds.time.dt.month >=10) + nwm_ds.time.dt.year
-            nwm_ds.coords['water_yr'] = water_yr # https://stackoverflow.com/questions/72268056/python-adding-a-water-year-time-variable-in-an-x-array
-            nwm_df = org_nwm(nwm_ds, water_yr)
+            if calc_nwm:
+                # as of 2024 Sep, the retro run goes from 1979 Feb to 2023 Feb
+                nwm_ds = ds.sel(feature_id=row.nwm_seg)['streamflow'].sel(time=slice('1979-10-01', '2022-09-30'))
+                water_yr = (nwm_ds.time.dt.month >=10) + nwm_ds.time.dt.year
+                nwm_ds.coords['water_yr'] = water_yr # https://stackoverflow.com/questions/72268056/python-adding-a-water-year-time-variable-in-an-x-array
+                nwm_df = org_nwm(nwm_ds, water_yr)
 
-            site_df = nwm_df.merge(usgs_df, how='left', on='aep_percent')
+                site_df = nwm_df.merge(usgs_df, how='left', on='aep_percent')
+            else:
+                site_df = usgs_df
 
             site_df.insert(0, 'ahps_lid', row.ahps_lid)
+            simple_df = site_df[['ahps_lid', 'usgsFlow_cfs', 'aep_percent']].pivot(index='ahps_lid',columns='aep_percent', values='usgsFlow_cfs') 
 
             print(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(row.usgs_gage))
             logging.info(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(row.usgs_gage))
             if external_count == 0 and start_index == 0:
-                site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + out_fn_suffix), index=False)
+                site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + full_usgs_fn_suffix), index=False)
+                simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + slim_usgs_fn_suffix))
             else:
-                site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + out_fn_suffix), index=False, mode='a', header=False)
+                site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + full_usgs_fn_suffix), index=False, mode='a', header=False)
+                simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + slim_usgs_fn_suffix), mode='a', header=False)
 
             external_count += 1
             loop_li.append(site_df)
@@ -203,10 +216,13 @@ def main():
     
     areas_df = pd.read_csv(os.path.join(ctrl_dir, areas_fn))
     aois_li = areas_df.loc[areas_df['include'] == 'x']['area'].tolist()
-
-    logging.info('loading begun for NWM retro bucket')
-    ds = xr.open_zarr(fsspec.get_mapper(nwm_retro_bucket_url, anon=True),consolidated=True)
-    logging.info('loading complete for NWM retro bucket')
+    
+    if calc_nwm:
+        logging.info('loading begun for NWM retro bucket')
+        ds = xr.open_zarr(fsspec.get_mapper(nwm_retro_bucket_url, anon=True),consolidated=True)
+        logging.info('loading complete for NWM retro bucket')
+    else:
+        ds = None
 
     for aoi in aois_li:
         logging.info(aoi + ' streamstats gathering has started')
