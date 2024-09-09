@@ -11,7 +11,7 @@
 # - NWM and AEP calc may have different methods (local regression vs the equation listed in summary)
 
 # inputs:
-# - usgs streamstats, example call (from nws gage analysis): https://streamstats.usgs.gov/gagestatsservices/statistics?statisticGroups=pfs&stationIDOrCode=14191000
+# - usgs streamstats, example call (from nws gage analysis): https://streamstats.usgs.gov/gagestatsservices/statistics?statisticGroups=pfs&stationIDOrCode=
 #   - use USGS's dataretrieval?: https://doi-usgs.github.io/dataretrieval-python/
 # - nwm AEP stats (not yet implemented, values started straying wildly - given time it took, didn't seem worth it)
 #   - resource for extracting zarr data (hopefully same for NWM v3.0): https://www.hydroshare.org/resource/c4c9f0950c7a42d298ca25e4f6ba5542/
@@ -92,6 +92,10 @@ def org_usgs(usgs_json, ahps_lid):
     # taking preferred USGS AEP, note yearsofRecord only taken from empirical AEP (vs. regression/algorithmic AEP)
     # otherwise yearsofRecord should be NA, removed for now 
     pref_df = temp_df[temp_df['isPreferred']==True][['value', 'citationID', 'regressionType']]
+
+    if pref_df.empty:
+        # handling case when there is no preference
+        pref_df = temp_df[['value', 'citationID', 'regressionType']]
 
     stats_meta = pd.DataFrame(list(pref_df['regressionType']))
 
@@ -180,6 +184,11 @@ def get_site_info(mapping_df, request_header, aoi, ds):
     
     external_count = 0
     for i, row in mapping_df.iloc[start_index:].iterrows():
+        usgs_num_str = str(row.usgs_gage).zfill(8)
+
+        if len(usgs_num_str) != 8:
+            logging.info(row.ahps_lid + ' has wrong number of digts')
+                    
         http = urllib3.PoolManager()
         usgs_url = usgs_url_prefix + str(row.usgs_gage)
         usgs_response = http.request('GET', usgs_url, headers=request_header)
