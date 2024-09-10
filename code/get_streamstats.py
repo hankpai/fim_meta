@@ -113,34 +113,56 @@ def org_usgs(usgs_json, ahps_lid):
     org_df = org_df[org_df['usgs_description'].notna()]
 
     # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
-    if len(org_df.index) > len(aep_li):
-        assign_pref_df = org_df[org_df['usgs_description'].str.contains("Weighted")]
-        usgs_stat_type = 'weighted' 
-        logging.info(ahps_lid + ' : no preferred usgs stats, choose weighted')
-        if assign_pref_df.empty == True:
-            assign_pref_df = org_df[org_df['usgs_description'].str.contains("Maximum")]
-            logging.info(ahps_lid + ' : no preferred usgs stats, choose empirical')
-            usgs_stat_type = 'empirical' 
+    if org_df.empty:
+        # case where json is present but no AEP stats (lilc2, usgs: 09260000)
+        return_df = org_df
+        logging.info(ahps_lid + ' has a json, but no peak stats')
     else:
-        first_word_desc = org_df.iloc[0]['usgs_description'].split()[0]
-        if first_word_desc == 'Weighted':
-            usgs_stat_type = 'weighted'
-        elif first_word_desc == 'Maximum':
-            usgs_stat_type = 'empirical'
-        elif first_word_desc == 'Regression':
-            usgs_stat_type = 'regression'
-        else: 
-            usgs_stat_type = 'other'
-        assign_pref_df = org_df
+        if len(org_df.index) > len(aep_li):
+            test_pref_df = org_df[org_df['usgs_description'].str.contains("Weighted")]
+            usgs_stat_type = 'weighted' 
+            logging.info(ahps_lid + ' : no preferred usgs stats, choose weighted')
+            if test_pref_df.empty == True:
+                test_pref_df = org_df[org_df['usgs_description'].str.contains("Maximum")]
+                logging.info(ahps_lid + ' : no preferred usgs stats, choose empirical')
+                usgs_stat_type = 'empirical' 
+            
+            # if the preferred has old citations, choose the most frequent citation (ensures one flow per percent)
+            # coss2 (usgs: 06482610) is an example
+            if len(test_pref_df) > len(aep_li):
+                most_frequent_cite = test_pref_df.citationID.mode()[0]
+                assign_pref_df = test_pref_df[test_pref_df.citationID == most_frequent_cite]
+                logging.info(ahps_lid + ' has multiple flows per percent, most frequent citation chosen')
+            else:
+                assign_pref_df = test_pref_df
+        else:
+            # so, some exception handling as aftw3 (usgs: 05430500) has two methods that are 'preferred'
+            # so handling the by choosing the most 'frequent' preferred method
+            first_word_desc = org_df.usgs_description.str.split().str.get(0)
+            most_frequent_word = first_word_desc.mode()[0]  #most frequent
 
-    # some cleaning and sorting
-    numeric_aeps = [float(i) for i in assign_pref_df['aep_percent']]
-    temp_df = assign_pref_df.copy()
-    temp_df['aep_percent'] = numeric_aeps
-    rename_df = temp_df.rename(columns={'value':'usgsFlow_cfs'})
-    sort_df = rename_df.sort_values('usgsFlow_cfs')
-    return_df = sort_df.drop(['usgs_description'], axis=1)
-    return_df['usgs_stat_type'] = usgs_stat_type
+            most_frequent_df = org_df[first_word_desc == most_frequent_word]
+            if len(org_df) != len(most_frequent_df):
+                logging.info(ahps_lid + ' has multiple flows per percent, most frequent method chosen')
+            
+            if most_frequent_word == 'Weighted':
+                usgs_stat_type = 'weighted'
+            elif most_frequent_word == 'Maximum':
+                usgs_stat_type = 'empirical'
+            elif most_frequent_word == 'Regression':
+                usgs_stat_type = 'regression'
+            else: 
+                usgs_stat_type = 'other'
+            assign_pref_df = most_frequent_df
+
+        # some cleaning and sorting
+        numeric_aeps = [float(i) for i in assign_pref_df['aep_percent']]
+        temp_df = assign_pref_df.copy()
+        temp_df['aep_percent'] = numeric_aeps
+        rename_df = temp_df.rename(columns={'value':'usgsFlow_cfs'})
+        sort_df = rename_df.sort_values('usgsFlow_cfs')
+        return_df = sort_df.drop(['usgs_description'], axis=1)
+        return_df['usgs_stat_type'] = usgs_stat_type
 
     return(return_df)
 
@@ -184,57 +206,64 @@ def get_site_info(mapping_df, request_header, aoi, ds):
     
     external_count = 0
     for i, row in mapping_df.iloc[start_index:].iterrows():
-        usgs_num_str = str(row.usgs_gage).zfill(8)
-
-        if len(usgs_num_str) != 8:
-            logging.info(row.ahps_lid + ' has wrong number of digts')
-                    
-        http = urllib3.PoolManager()
-        usgs_url = usgs_url_prefix + str(row.usgs_gage)
-        usgs_response = http.request('GET', usgs_url, headers=request_header)
-        usgs_json = json.loads(usgs_response.data.decode('utf8'))
-
-        if len(usgs_json) == 0:
-            logging.info(row.ahps_lid + ' missing usgs json or empty page')
-        else:
-            usgs_df = org_usgs(usgs_json, row.ahps_lid)
-
-            if calc_nwm:
-                # as of 2024 Sep, the retro run goes from 1979 Feb to 2023 Feb
-                nwm_ds = ds.sel(feature_id=row.nwm_seg)['streamflow'].sel(time=slice('1979-10-01', '2022-09-30'))
-                water_yr = (nwm_ds.time.dt.month >=10) + nwm_ds.time.dt.year
-                nwm_ds.coords['water_yr'] = water_yr # https://stackoverflow.com/questions/72268056/python-adding-a-water-year-time-variable-in-an-x-array
-                nwm_df = org_nwm(nwm_ds, water_yr)
-
-                site_df = nwm_df.merge(usgs_df, how='left', on='aep_percent')
-            else:
-                site_df = usgs_df
+        if row.usgs_gage != 0:  # this line is kept to make sure debugging is easier iterating via catfim metadata file
             
-            site_df.insert(0, 'ratingMax_cfs', row.rating_max_flow)
-            site_df.insert(0, 'rfc_headwater', row.rfc_headwater)
-            site_df.insert(0, 'wfo', row.nws_data_wfo)
-            site_df.insert(0, 'ahps_lid', row.ahps_lid)
-            simple_df = site_df[['ahps_lid', 
-                                 'wfo', 
-                                 'rfc_headwater',
-                                 'usgs_stat_type', 
-                                 'ratingMax_cfs', 
-                                 'usgsFlow_cfs', 
-                                 'aep_percent']].pivot(index=['ahps_lid', 'wfo', 'rfc_headwater', 'usgs_stat_type', 'ratingMax_cfs'],
-                                                       columns='aep_percent', 
-                                                       values='usgsFlow_cfs') 
+            usgs_num_str = str(row.usgs_gage).zfill(8)
 
-            print(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(row.usgs_gage))
-            logging.info(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(row.usgs_gage))
-            if external_count == 0 and start_index == 0:
-                site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + full_usgs_fn_suffix), index=False)
-                simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + slim_usgs_fn_suffix))
+            if len(usgs_num_str) != 8:
+                logging.info(row.ahps_lid + ' has wrong number of digts')
+                        
+            http = urllib3.PoolManager()
+            usgs_url = usgs_url_prefix + usgs_num_str
+            usgs_response = http.request('GET', usgs_url, headers=request_header)
+            usgs_json = json.loads(usgs_response.data.decode('utf8'))
+
+            if len(usgs_json) == 0:
+                logging.info(row.ahps_lid + ' missing usgs json or empty page')
             else:
-                site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + full_usgs_fn_suffix), index=False, mode='a', header=False)
-                simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + slim_usgs_fn_suffix), mode='a', header=False)
+                usgs_df = org_usgs(usgs_json, row.ahps_lid)
 
-            external_count += 1
-            loop_li.append(site_df)
+                if usgs_df.empty == False:
+                    if calc_nwm:
+                        # as of 2024 Sep, the retro run goes from 1979 Feb to 2023 Feb
+                        nwm_ds = ds.sel(feature_id=row.nwm_seg)['streamflow'].sel(time=slice('1979-10-01', '2022-09-30'))
+                        water_yr = (nwm_ds.time.dt.month >=10) + nwm_ds.time.dt.year
+                        nwm_ds.coords['water_yr'] = water_yr # https://stackoverflow.com/questions/72268056/python-adding-a-water-year-time-variable-in-an-x-array
+                        nwm_df = org_nwm(nwm_ds, water_yr)
+
+                        site_df = nwm_df.merge(usgs_df, how='left', on='aep_percent')
+                    else:
+                        site_df = usgs_df
+                                        
+                    site_df.insert(0, 'ratingMax_cfs', row.rating_max_flow)
+                    site_df.insert(0, 'rfc_headwater', row.rfc_headwater)
+                    site_df.insert(0, 'wfo', row.nws_data_wfo)
+                    site_df.insert(0, 'ahps_lid', row.ahps_lid)
+
+                    """ below is commented out to write to file one time in main section.  ensures simple_df is written correctly via column
+                    simple_df = site_df[['ahps_lid', 
+                                        'wfo', 
+                                        'rfc_headwater',
+                                        'usgs_stat_type', 
+                                        'ratingMax_cfs', 
+                                        'usgsFlow_cfs', 
+                                        'aep_percent']].pivot(index=['ahps_lid', 'wfo', 'rfc_headwater', 'usgs_stat_type', 'ratingMax_cfs'],
+                                                            columns='aep_percent', 
+                                                            values='usgsFlow_cfs') 
+                    
+                    if external_count == 0 and start_index == 0:
+                        site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + full_usgs_fn_suffix), index=False)
+                        simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + slim_usgs_fn_suffix))
+                    else:
+                        site_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + full_usgs_fn_suffix), index=False, mode='a', header=False)
+                        simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + slim_usgs_fn_suffix), mode='a', header=False)
+                    """
+
+                    print(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(usgs_num_str))
+                    logging.info(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(usgs_num_str))
+
+                    external_count += 1
+                    loop_li.append(site_df)
 
     logging.info('scraping done')
     return_df = pd.concat(loop_li)
@@ -261,14 +290,27 @@ def main():
         files_li = glob.glob(in_dir + '/*_' + aoi + catfim_meta_fn_suffix)
         last_catfim_fullfn = max(files_li, key=os.path.getctime)
         catfim_df = pd.read_csv(last_catfim_fullfn)
-        usgs_map_df = catfim_df[catfim_df['usgs_gage'] != 0][['ahps_lid', 
-                                                              'nwm_seg', 
-                                                              'usgs_gage',
-                                                              'nws_data_wfo',
-                                                              'rfc_headwater',
-                                                              'rating_max_flow']]
+        usgs_map_df = catfim_df[['ahps_lid',
+                                 'nwm_seg',
+                                 'usgs_gage',
+                                 'nws_data_wfo',
+                                 'rfc_headwater',
+                                 'rating_max_flow']]
         
         stats_df = get_site_info(usgs_map_df, request_header, aoi, ds)
+
+        simple_df = stats_df[['ahps_lid', 
+                              'wfo', 
+                              'rfc_headwater',
+                              'usgs_stat_type', 
+                              'ratingMax_cfs', 
+                              'usgsFlow_cfs', 
+                              'aep_percent']].pivot(index=['ahps_lid', 'wfo', 'rfc_headwater', 'usgs_stat_type', 'ratingMax_cfs'],
+                                                    columns='aep_percent', 
+                                                    values='usgsFlow_cfs') 
+        
+        stats_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + full_usgs_fn_suffix), index=False)
+        simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + slim_usgs_fn_suffix))
 
         logging.info(aoi + ' streamstats gathering has finished')
     
