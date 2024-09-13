@@ -5,9 +5,11 @@ ctrl/*.png
 in/flow/*
 in/stage/*
 in/nonhand_fim/*
+in/aep/*
 logs/*
 out/catfim/*
 out/stats/*
+out/db_calls/*
 readme.docx
 
 # vscode settings
