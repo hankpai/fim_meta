@@ -2,7 +2,7 @@
 # contact info:         henry <dot> pai <at> noaa <dot> gov
 # last edit by:         hp
 # last edit time:       Sep 2024
-# last edit comment:    starting script
+# last edit comment:    simple script mapping nws lids to nwm segments
 
 # summary: 
 # making call field_id ESRI/database call, select * where field_id in ('<id1>', '<id2>', etc.) where ids are nwm segs
@@ -13,15 +13,7 @@ import glob
 import pandas as pd
 import pdb
 
-
 # ===== global/user vars (not path related)
-# common AEP's of interest, leaving as strings to avoid potential rounding errors in array intersections
-aep_li = ['0.2', '1', '2', '4', '10', '20', '50']
-calc_nwm = False
-
-# ===== debugging var
-start_index = 0
-#start_index = 398 # should be used when debugging, otherwise comment out
 
 # ===== directories & filenames (site/computer specific)
 work_dir = pathlib.Path(__file__).parent.parent  # IDE independent
@@ -43,8 +35,6 @@ out_fn_prefix = pd.Timestamp.now().strftime('%Y%m%d') + '_'
 out_fn_suffix = '_nwm_aep_stats.txt'
 
 # ===== functions
-
-
 def main():
     areas_df = pd.read_csv(os.path.join(ctrl_dir, areas_fn))
     aois_li = areas_df.loc[areas_df['include'] == 'x']['area'].tolist()
@@ -69,7 +59,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-

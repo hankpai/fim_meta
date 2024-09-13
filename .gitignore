@@ -5,7 +5,7 @@ ctrl/*.png
 in/flow/*
 in/stage/*
 in/nonhand_fim/*
-in/aep/*
+in/nwm_aep/*
 logs/*
 out/catfim/*
 out/stats/*

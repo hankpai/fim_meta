@@ -2,7 +2,7 @@
 # contact info:         henry <dot> pai <at> noaa <dot> gov
 # last edit by:         hp
 # last edit time:       Sep 2024
-# last edit comment:    start of USGS and NWM AEP, note NWM stats from USGS Bulletin 17C eq. 11
+# last edit comment:    exception handling for getting USGS streamstats
 
 # summary:
 # aggregates AEP stats from USGS; note NWM stats from USGS Bulletin 17C eq. 11 - implemented, but not output as values were >> usgs stats
@@ -21,9 +21,9 @@
 
 # TODO
 # [ ] look at xarray group by, can this be done by coordinate?
-# [ ] perhaps use USGS dataretrieval package, now in python!
+# [ ] perhaps use USGS dataretrieval package, now in also in python!
 # [ ] need stats on annual peaks?
-# [ ] do filter for low outliers? https://code.usgs.gov/water/stats/MGBT/-/tree/master?ref_type=heads
+# [ ] filter for low outliers? https://code.usgs.gov/water/stats/MGBT/-/tree/master?ref_type=heads
 
 import os
 import yaml
