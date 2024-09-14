@@ -11,6 +11,7 @@
 
 # things to be careful about:
 # - While USGS is considered authoritative, statistical distrutions at higher ends of ratings that themselves contain large measurement errors
+#   (i believe some streamstats pass uncertainty bands defined, at least for the empirically derived method)
 # - Additionally, USGS streamstats come in different flavors with assumed most accurate form chosen by 01b script
 # - Assumption that NWM AEP stats are correctly estimated (wasn't able to reproduce) from WRDS method described below: 
 #   https://vlab.noaa.gov/redmine/projects/wrds/wiki/WRDS_Location_API
@@ -28,18 +29,21 @@ import os
 import pathlib
 import glob
 import pandas as pd
+import functools
+import operator
 import pdb
 
 # ===== global/user vars (not path related)
 # common AEP's of interest, leaving as strings to avoid potential rounding errors in array intersections
 aep_li = ['2', '4', '10', '20', '50']
+usgs_keep_cols = ['ahps_lid', 'wfo', 'rfc_headwater', 'usgs_stat_type', 'ratingMax_cfs']
 
 # ===== debugging var
 
 # ===== directories & filenames (site/computer specific)
 work_dir = pathlib.Path(__file__).parent.parent  # IDE independent
 
-ctrl_dir = os.path.join(work_dir, "ctrl")   # csv files controlling columns and wfo's to scrape
+ctrl_dir = os.path.join(work_dir, "ctrl")  # csv files controlling columns and wfo's to scrape
 in_catfim_dir = os.path.join(work_dir, 'out', 'catfim')
 in_nwm_aep_dir = os.path.join(work_dir, 'in', 'nwm_aep')
 stats_dir = os.path.join(work_dir, "out", "stats")  # both input and output dir
@@ -59,20 +63,50 @@ slim_usgs_fn_suffix = '_usgs_slim_streamstats.csv'
 
 # ===== functions
 def org_nwm_aeps(nwm_seg_df, aoi):
+    """
+    
+    """
+    
+    # columns from nwm aep copied & pasted as a tab delimited file from arcgis pro from gid's rest service(s)
+    # - NWM Feature ID
+    # - Hydro ID
+    # - USGS HUC8
+    # - Streamflow (cfs)
+    # - FIM Stage (ft)
+    # - FIM Version
+    # - Branch
+    # - Max Rating Curve Stage (ft)
+    # - Max Rating Curve Streamflow (cfs)
+    # - oid
+    # - geom
 
-    for aep in aep_li:
+    loop_li = []
+
+    for i, aep in enumerate(aep_li):
         
         aep_str = aep.zfill(2)
         nwm_aep_files_li = glob.glob(in_nwm_aep_dir + '/*_' + aoi + '_' + aep_str + nwm_stats_fn_suffix)
         last_nwm_aep_fullfn = max(nwm_aep_files_li, key=os.path.getctime)
         nwm_aep_df = pd.read_csv(last_nwm_aep_fullfn, sep='\t')
-        pdb.set_trace()
 
+        unique_nwm_aep_df = nwm_aep_df[['NWM Feature ID','Streamflow (cfs)']].drop_duplicates(subset='NWM Feature ID')
+        unique_nwm_aep_df.columns = ['nwm_seg', aep_str + '_nwm']
 
+        lid_nwm_aep_df = nwm_seg_df.merge(unique_nwm_aep_df, how='left').drop('nwm_seg', axis=1).set_index('ahps_lid')
+
+        loop_li.append(lid_nwm_aep_df)
+
+    # merging/concatenating
+    return_df = pd.concat(loop_li, axis=1)
+
+    return(return_df)
 
 def main():
     areas_df = pd.read_csv(os.path.join(ctrl_dir, areas_fn))
     aois_li = areas_df.loc[areas_df['include'] == 'x']['area'].tolist()
+
+    usgs_aep_cols_li = [format(float(i), '.1f') for i in aep_li]
+    usgs_aep_rename_li = [i.zfill(2) + '_usgs' for i in aep_li]
 
     for aoi in aois_li:
         # some repetition here with script 02
@@ -84,9 +118,21 @@ def main():
         usgs_last_stats_fullfn = max(usgs_stats_files_li, key=os.path.getctime)
         usgs_df = pd.read_csv(usgs_last_stats_fullfn)
 
+        # selecting aep's of interest (leaves out 0.2 and 1)
+        usgs_aep_df = usgs_df[functools.reduce(operator.add, [usgs_keep_cols, usgs_aep_cols_li])] 
+
+        # renaming usgs cols, 2nd answer: https://stackoverflow.com/questions/47343838/how-to-change-column-names-in-pandas-dataframe-using-a-list-of-names 
+        usgs_org_df = usgs_aep_df.rename(columns=dict(zip(usgs_aep_cols_li, usgs_aep_rename_li))).set_index('ahps_lid')
+
         nwm_seg_df = usgs_df[['ahps_lid']].merge(catfim_df[['ahps_lid', 'nwm_seg']])
 
         nwm_stats_df = org_nwm_aeps(nwm_seg_df, aoi)
+
+        merged_df = usgs_org_df.merge(nwm_stats_df, left_index=True, right_index=True)
+        
+        
+
+        pdb.set_trace()
 
 
 if __name__ == '__main__':
