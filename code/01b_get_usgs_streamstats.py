@@ -236,6 +236,7 @@ def get_site_info(mapping_df, request_header, aoi, ds):
                         site_df = usgs_df
                                         
                     site_df.insert(0, 'ratingMax_cfs', row.rating_max_flow)
+                    site_df.insert(0, 'nwm_streamOrder', row.nwm_feature_data_stream_order)
                     site_df.insert(0, 'rfc_headwater', row.rfc_headwater)
                     site_df.insert(0, 'wfo', row.nws_data_wfo)
                     site_df.insert(0, 'ahps_lid', row.ahps_lid)
@@ -295,6 +296,7 @@ def main():
                                  'usgs_gage',
                                  'nws_data_wfo',
                                  'rfc_headwater',
+                                 'nwm_feature_data_stream_order',
                                  'rating_max_flow']]
         
         stats_df = get_site_info(usgs_map_df, request_header, aoi, ds)
@@ -302,10 +304,11 @@ def main():
         simple_df = stats_df[['ahps_lid', 
                               'wfo', 
                               'rfc_headwater',
+                              'nwm_streamOrder',
                               'usgs_stat_type', 
                               'ratingMax_cfs', 
                               'usgsFlow_cfs', 
-                              'aep_percent']].pivot(index=['ahps_lid', 'wfo', 'rfc_headwater', 'usgs_stat_type', 'ratingMax_cfs'],
+                              'aep_percent']].pivot(index=['ahps_lid', 'wfo', 'rfc_headwater', 'nwm_streamOrder', 'usgs_stat_type', 'ratingMax_cfs'],
                                                     columns='aep_percent', 
                                                     values='usgsFlow_cfs') 
         
