@@ -77,7 +77,7 @@ import yaml
 import pdb
 
 # ===== global/user vars (not path related)
-get_partner = False  # gets usgs DEM and fema hazard info if True
+get_partner = True  # gets usgs DEM and fema hazard info if True
 
 # in NWPS, if both flow and stage are populated, the code takes care of 'most cases' in the function: check_threshold_type
 # the site below is still a flow threshold site, but has both flow and stage populated in the api metadata
@@ -383,9 +383,9 @@ def get_site_info(fims_df, aoi, request_header):
                         logging.info(lid + ' has malformed epoch') # msbm8 11/14/2019
 
             else:
-                    dem_resolution = partner_df[partner_df['ahps_lid'] == lid]['dem_resolution'].iloc[0]
-                    dem_yr = partner_df[partner_df['ahps_lid'] == lid]['dem_yr'].iloc[0]
-                    fema_effective_date = partner_df[partner_df['ahps_lid'] == lid]['fema_eff_date'].iloc[0]
+                dem_resolution = partner_df[partner_df['ahps_lid'] == lid]['dem_resolution'].iloc[0]
+                dem_yr = partner_df[partner_df['ahps_lid'] == lid]['dem_yr'].iloc[0]
+                fema_effective_date = partner_df[partner_df['ahps_lid'] == lid]['fema_eff_date'].iloc[0]
                     
             org_thresh_imp_df = add_meta_cols(thresh_imp_df, threshold_type, max_stg, max_flow, dem_resolution, dem_yr, ahps_fim_exist, usgs_fim_exist, usgs_fim_yr, fema_effective_date, rfc_headwater)
             org_row = pd.DataFrame(add_meta_cols(row, threshold_type, max_stg, max_flow, dem_resolution, dem_yr, ahps_fim_exist, usgs_fim_exist, usgs_fim_yr, fema_effective_date, rfc_headwater)).T

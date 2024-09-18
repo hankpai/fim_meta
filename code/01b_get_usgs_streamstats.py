@@ -290,7 +290,9 @@ def main():
         logging.info(aoi + ' streamstats gathering has started')
         files_li = glob.glob(in_dir + '/*_' + aoi + catfim_meta_fn_suffix)
         last_catfim_fullfn = max(files_li, key=os.path.getctime)
+        logging.info(aoi + ' is using ' + last_catfim_fullfn + ' for getting stats')
         catfim_df = pd.read_csv(last_catfim_fullfn)
+
         usgs_map_df = catfim_df[['ahps_lid',
                                  'nwm_seg',
                                  'usgs_gage',
