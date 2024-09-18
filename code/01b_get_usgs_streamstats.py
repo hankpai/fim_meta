@@ -112,12 +112,12 @@ def org_usgs(usgs_json, ahps_lid):
     org_df['usgs_description'] = stats_meta.iloc[row_idxs]['description'].reset_index(drop=True)
     org_df = org_df[org_df['usgs_description'].notna()]
 
-    # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
     if org_df.empty:
         # case where json is present but no AEP stats (lilc2, usgs: 09260000)
         return_df = org_df
         logging.info(ahps_lid + ' has a json, but no peak stats')
     else:
+        # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
         if len(org_df.index) > len(aep_li):
             test_pref_df = org_df[org_df['usgs_description'].str.contains("Weighted")]
             usgs_stat_type = 'weighted' 
