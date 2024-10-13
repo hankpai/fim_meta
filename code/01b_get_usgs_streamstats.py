@@ -66,7 +66,7 @@ areas_fn = 'nws_aois.csv'
 catfim_meta_fn_suffix = '_catFim_meta.csv'
 
 # output files
-log_fn = 'streamstats.log'
+log_fn = 'usgs_streamstats.log'
 out_fn_prefix = pd.Timestamp.now().strftime('%Y%m%d') + '_'
 full_usgs_fn_suffix = '_usgs_all_streamstats.csv'
 slim_usgs_fn_suffix = '_usgs_slim_streamstats.csv'
