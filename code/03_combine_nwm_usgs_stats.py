@@ -44,6 +44,7 @@ import urllib
 import urllib3
 import json
 import yaml
+import re
 import pdb
 
 # ===== global/user vars (not path related)
@@ -53,6 +54,10 @@ usgs_keep_cols = ['ahps_lid', 'wfo', 'rfc_headwater', 'nwm_streamOrder', 'usgs_s
 
 # sources: offline (fim_libs --> nwm_aep_inundation_extent_library_noaa; login required), online (reference --> static_nwm_flowlines; no login)
 nwm_aep_src = 'online'
+
+# taken from usbr scraper script as REST/url calls cannot exceed 2048 characters
+# 100 nwm stream reach ids generated url of 1867 characters while 110 generated 2037
+max_nwm_ids = 100
 
 # ===== debugging var
 
@@ -113,9 +118,9 @@ def org_nwm_aeps(nwm_seg_df, aoi, request_header):
     # - oid
     # - geom
 
-    if nwm_aep_src == 'offline':
-        loop_li = []
+    loop_li = []
 
+    if nwm_aep_src == 'offline':
         for i, aep in enumerate(aep_li):
             # grabbing most recent copy and paste files per aep
             aep_str = aep.zfill(2)
@@ -135,26 +140,52 @@ def org_nwm_aeps(nwm_seg_df, aoi, request_header):
         # merging/concatenating
         return_df = pd.concat(loop_li, axis=1)
     elif nwm_aep_src == 'online':
-        nwm_segs_li = nwm_seg_df['nwm_seg'].tolist()
-        nwm_str1 = ','.join(f"'{str(i)}'" for i in nwm_segs_li)
-        final_nwm_str = '(' + nwm_str1 + ')'
+        # needed to turn this cert off for home
+        http = urllib3.PoolManager(cert_reqs='CERT_NONE')
 
-        http = urllib3.PoolManager()
+        for i in range(0, len(nwm_seg_df), max_nwm_ids):
+            logging.info(aoi + ' ' + nwm_aep_src + ' aggregation started for index starting at ' + str(i))
+            # subsetting and generating call
+            nwm_seg_subset_df = nwm_seg_df.iloc[i:(i + max_nwm_ids)]
+            nwm_segs_li = nwm_seg_subset_df['nwm_seg'].tolist() # still works ok if i + max_nwm_ids > total len of df
+            nwm_str1 = ','.join(f"'{str(i)}'" for i in nwm_segs_li)
+            final_nwm_str = '(' + nwm_str1 + ')'
 
-        flowline_params = {
-                'where': "feature_id in ('22937978','23940255')",
-                #'where': "feature_id in " + final_nwm_str,
-                'returnGeometry': 'false',
-                'outFields': '*',
-                'f': 'pjson'
-            }
-        flowline_url = flowline_base_url + urllib.parse.urlencode(flowline_params)
-        flowline_response = http.request('GET', flowline_url, headers = request_header)
-        flowline_json = json.loads(flowline_response.data.decode('utf8'))
-        pdb.set_trace()
-    else:
-        logging.info(aoi + ' AEP stats aggregation has finished for NWM source ' + nwm_aep_src)
+            # setting some return period/frequency and aep labels up
+            rf_str_li = ['rf_' + str(int(1/(int(aep)/100))) for aep in aep_li] # generating return frequency/period string (2% AEP = 50 yr flood)
+            aep_str_li = [aep.zfill(2) + "_nwm" for aep in aep_li]
+            rf_aep_dict = dict(zip(rf_str_li, aep_str_li))
+
+            flowline_params = {
+                    #'where': "feature_id in ('22937978','23940255')", # testing
+                    'where': "feature_id in " + final_nwm_str,
+                    'returnGeometry': 'false',
+                    'outFields': '*',
+                    'f': 'pjson'
+                }
+            
+            flowline_url = flowline_base_url + urllib.parse.urlencode(flowline_params)
+            flowline_response = http.request('GET', flowline_url, headers = request_header)
+            flowline_json = json.loads(flowline_response.data.decode('utf8'))
+            flowline_df = pd.json_normalize(flowline_json, 'features')
+            flowline_df.columns = [col.split('.')[-1] for col in flowline_df.columns] # removing some column name prefixes
+            
+            # narrowing search to just return frequency/period columns
+            col_search_str = '|'.join(rf_str_li)
+            nwm_aep_df = flowline_df.loc[:, flowline_df.columns.str.contains(col_search_str)]
+
+            # mapping columns to aep's, renaming, and adding nwm_seg columns
+            regex = re.compile(r'^rf_(\d+)*')
+            nwm_aep_df.columns = [rf_aep_dict[regex.match(colname)[0]] for colname in nwm_aep_df.columns]
+            nwm_aep_df.loc[:, ['nwm_seg']] = pd.to_numeric(flowline_df['feature_id'])
+
+            online_nwm_aep_df = nwm_seg_subset_df.merge(nwm_aep_df, how='left').drop('nwm_seg', axis=1).set_index('ahps_lid')
+
+            loop_li.append(online_nwm_aep_df)
         
+        return_df = pd.concat(loop_li, axis=0)
+    else:
+        logging.error('incorrect source provided (options: online, offline)')
 
     return(return_df)
 
@@ -185,7 +216,7 @@ def main():
     for aoi in aois_li:
         logging.info(aoi + ' AEP stats aggregation has started for NWM source ' + nwm_aep_src)
         
-        # some repetition here with script 02
+        # some repetition here with script
         catfim_files_li = glob.glob(in_catfim_dir + '/*_' + aoi + catfim_meta_fn_suffix)
         last_catfim_fullfn = max(catfim_files_li, key=os.path.getctime)
         catfim_df = pd.read_csv(last_catfim_fullfn)
@@ -213,7 +244,7 @@ def main():
         norm_error_df = calc_norm_err(usgs_slim_df, nwm_stats_df)
 
         final_df = merged_df.merge(norm_error_df, left_index=True, right_index=True)
-        final_df.to_csv(os.path.join(stats_dir, out_fn_prefix + aoi + out_fn_suffix))
+        final_df.to_csv(os.path.join(stats_dir, out_fn_prefix + aoi + '_' + nwm_aep_src + out_fn_suffix))
 
         logging.info(aoi + ' AEP stats aggregation has finished for NWM source ' + nwm_aep_src)
 
