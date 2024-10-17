@@ -43,7 +43,7 @@ Data inputs:
 3. json file for usgs fim maps (from Benjamin)
 4. NOAA/NWS scraper for the gage thresholds, rating, impact statements, etc.: https://api.water.noaa.gov/nwps/v1/docs/
 5. USGS nationalmaps DEM api for point queries: https://epqs.nationalmap.gov/v1/docs
-6. USGS nationalmaps DEP api for bulk point query (up to 500 points): https://apps.nationalmap.gov/bulkpqs/#
+6. USGS nationalmaps DEM api for bulk point query (up to 500 points): https://apps.nationalmap.gov/bulkpqs/#
 7. FEMA hazard layer ESRI REST service: https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer
 8. USGS streamstats api: https://streamstats.usgs.gov/gagestatsservices/
 
