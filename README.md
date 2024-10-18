@@ -48,10 +48,10 @@ Data inputs:
 8. USGS streamstats api: https://streamstats.usgs.gov/gagestatsservices/
 
 Data outputs:
-1. __out/catfim/[yyyymmdd]\_[aoi]\_raw_catFim_meta.csv__ - all locations from Data Inputs (1.i & 1.ii) with some column merging from flow and stage based categorical FIM
-2. __out/catfim/[yyyymmdd]\_[aoi]\_catFim_meta.csv__ - locations that exist on NWPS, pulled from above file (Data Output 1) and adding multiple metadata from NWPS, USGS, FEMA (Data Inputs 2, 3, 4, 5, 7)
-3. __out/catfim/[yyyymmdd]\_[aoi]\_impacts_meta.csv__ - combining impacts & thresholds at various stage/flow values along with some point metadata (Data input 4)
-4. __out/catfim/[yyyymmdd]\_[aoi]\_catFimReview_meta_stagePrioritized_wExceptions.csv__ - combining Data Output (2 & 3) for final output; stage thresholds are generally prioritized (see Issues below) and exceptions are hardcoded in (so flow threshold site(s))
+1. __out/catfim/[yyyymmdd]\_[aoi]\_[source = online/offline]\_raw_catFim_meta.csv__ - all locations from Data Inputs (1.i & 1.ii) with some column merging from flow and stage based categorical FIM
+2. __out/catfim/[yyyymmdd]\_[aoi]\_[source = online/offline]\_catFim_meta.csv__ - locations that exist on NWPS, pulled from above file (Data Output 1) and adding multiple metadata from NWPS, USGS, FEMA (Data Inputs 2, 3, 4, 5, 7)
+3. __out/catfim/[yyyymmdd]\_[aoi]\_[source = online/offline]\_impacts_meta.csv__ - combining impacts & thresholds at various stage/flow values along with some point metadata (Data input 4)
+4. __out/catfim/[yyyymmdd]\_[aoi]\_[source = online/offline]\_catFimReview_meta_stagePrioritized_wExceptions.csv__ - combining Data Output (2 & 3) for final output; stage thresholds are generally prioritized (see Issues below) and exceptions are hardcoded in (so flow threshold site(s))
 5. __out/stats/[yyyymmdd]\_[aoi]\_usgs_all_streamstats.csv__ - verbose export for USGS streamstats, generally preferring weighted AEP regression, unless otherwise stated (preference from communication via correspondence with Oregon USGS, but may vary by state).  Note, several Montana sites are downstream of reservoirs and they explicitly AEP is related to regulated and not naturalized flow
 6. __out/stats/[yyyymmdd]\_[aoi]\_usgs_slim_streamstats.csv__ - slimmed export for USGS streamstats, removing some metadata
 7. __out/db_calls/[yyyymmdd]\_[aoi]\_nwm_aep_stats.csv__ - OPTIONAL, generating query for ArcGIS Pro ESRI call
@@ -62,17 +62,20 @@ References:
 2. https://www.usgs.gov/3d-elevation-program/about-3dep-products-services - highlights resolutions of 3dep product
 
 Issues:
-- DEM query service times out with scraper, currently can rerun from prior scrape
-- DEM resolution changes from meter to to arc seconds from Reference 2.  Currently the value mixes meters and arc seconds.  Arc seconds seen in some aoi's so far:
-  - 1/3 arc second (9.2593e-5, 10 m) is a common type on the west coast
-  - 1/9 arc second (3.0864e-5, 3 m)
-  - 1 arc second (2.7778e-4, 30 m)
+- DEM query service sometimes times out with scraper, currently can rerun from prior scrape
+- ~~DEM resolution changes from meter to to arc seconds from Reference 2.  Currently the value mixes meters and arc seconds.  Arc seconds seen in some aoi's so far:~~
+  - ~~1/3 arc second (9.2593e-5, 10 m) is a common type on the west coast~~
+  - ~~1/9 arc second (3.0864e-5, 3 m)~~
+  - ~~1 arc second (2.7778e-4, 30 m)~~
 - no explicit label on threshold type for Data Input (4); tried to handle via algorithm and from primary unit for the observed data, but otherwise stage is prioritized
 - checking which NRP AEP source is more correct (1.iii or 1.iv)
+- warning in first script in line 264: "UserWarning: You are merging on int and float columns where the float values are not equal to their int representation." for org_thresholds_df.merge call
+- NWS ESRI rest service certificate warning from non-work laptop
 
 TODO:
-- [ ] Add ESRI rest call for public flow and stage catfim meta (Data Inputs 1.i and 1.ii) in Step 4.i
+- [x] Add ESRI rest call for public flow and stage catfim meta (Data Inputs 1.i and 1.ii) in Step 4.i
 - [ ] If Data Input 1.iii is more accurate for NRP AEP, can remove the optional download (Step 3) and hard code Step 4 to neglect offline option
 - [ ] Find way to make point DEM 3dep metadata query more robust (not time out)
-- [ ] Map DEM resolution to meters
+- [x] Map DEM resolution to meters
 - [ ] Expand output 5 to include all flavors of USGS estimated AEP (empirical, weighted, and others that are provided)
+- [ ] OPTIONAL finish trying to calculate NWM AEP's with low flow outlier filters
