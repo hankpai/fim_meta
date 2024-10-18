@@ -64,9 +64,9 @@ References:
 Issues:
 - DEM query service times out with scraper, currently can rerun from prior scrape
 - DEM resolution changes from meter to to arc seconds from Reference 2.  Currently the value mixes meters and arc seconds.  Arc seconds seen in some aoi's so far:
-  - 1/3 arc second (9.26e-5, 10 m) is a common type on the west coast
-  - 1/9 arc second (3.09e-5, 3 m)
-  - 1 arc second (2.78e-4, 30 m)
+  - 1/3 arc second (9.259e-5, 10 m) is a common type on the west coast
+  - 1/9 arc second (3.086e-5, 3 m)
+  - 1 arc second (2.778e-4, 30 m)
 - no explicit label on threshold type for Data Input (4); tried to handle via algorithm and from primary unit for the observed data, but otherwise stage is prioritized
 - checking which NRP AEP source is more correct (1.iii or 1.iv)
 
