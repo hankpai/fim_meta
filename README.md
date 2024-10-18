@@ -75,3 +75,4 @@ TODO:
 - [ ] If Data Input 1.iii is more accurate for NRP AEP, can remove the optional download (Step 3) and hard code Step 4 to neglect offline option
 - [ ] Find way to make point DEM 3dep metadata query more robust (not time out)
 - [ ] Map DEM resolution to meters
+- [ ] Expand output 5 to include all flavors of USGS estimated AEP (empirical, weighted, and others that are provided)
