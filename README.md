@@ -51,11 +51,11 @@ Data outputs:
 1. __out/catfim/[yyyymmdd]\_[aoi]\_raw_catFim_meta.csv__ - all locations from Data Inputs (1.i & 1.ii) with some column merging from flow and stage based categorical FIM
 2. __out/catfim/[yyyymmdd]\_[aoi]\_catFim_meta.csv__ - locations that exist on NWPS, pulled from above file (Data Output 1) and adding multiple metadata from NWPS, USGS, FEMA (Data Inputs 2, 3, 4, 5, 7)
 3. __out/catfim/[yyyymmdd]\_[aoi]\_impacts_meta.csv__ - combining impacts & thresholds at various stage/flow values along with some point metadata (Data input 4)
-4. __out/catfim/[yyyymmdd]\_[aoi]\_catFimReview_meta_stagePrioritized_wExceptions.csv__ - combining bullet Data Output (2 & 3) for final output; stage thresholds are generally prioritized (see Issues below) and exceptions are hardcoded in (so flow threshold site(s))
+4. __out/catfim/[yyyymmdd]\_[aoi]\_catFimReview_meta_stagePrioritized_wExceptions.csv__ - combining Data Output (2 & 3) for final output; stage thresholds are generally prioritized (see Issues below) and exceptions are hardcoded in (so flow threshold site(s))
 5. __out/stats/[yyyymmdd]\_[aoi]\_usgs_all_streamstats.csv__ - verbose export for USGS streamstats, generally preferring weighted AEP regression, unless otherwise stated (preference from communication via correspondence with Oregon USGS, but may vary by state).  Note, several Montana sites are downstream of reservoirs and they explicitly AEP is related to regulated and not naturalized flow
 6. __out/stats/[yyyymmdd]\_[aoi]\_usgs_slim_streamstats.csv__ - slimmed export for USGS streamstats, removing some metadata
 7. __out/db_calls/[yyyymmdd]\_[aoi]\_nwm_aep_stats.csv__ - OPTIONAL, generating query for ArcGIS Pro ESRI call
-8. __out/stats/[yyyymmdd]\[aoi]\_[source = online/offline]\_stats_normErr.csv__ - aggregates USGS and NRP AEP's and calculates normalized error to provide some caution noted in Reference 1
+8. __out/stats/[yyyymmdd]\_[aoi]\_[source = online/offline]\_stats_normErr.csv__ - aggregates USGS and NRP AEP's and calculates normalized error to provide some caution noted in Reference 1
 
 References:
 1. https://nhess.copernicus.org/articles/19/2405/2019/ - Table 4 highlights error in inundated area with flow error (starts to grow when flow error > 60%)
