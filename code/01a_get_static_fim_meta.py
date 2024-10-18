@@ -2,8 +2,8 @@
 # contributors:         Benjamin Sipprell - usgs and ahps fim info
 # contact info:         henry <dot> pai <at> noaa <dot> gov
 # last edit by:         hp
-# last edit time:       Sep 2024
-# last edit comment:    added various capabilities to scale beyond one rfc, determination of thresholds by observed primary unit, including ahps and usgs fim meta, fema study date info, and option to not redownload DEM & FEMA dates
+# last edit time:       Oct 2024
+# last edit comment:    added nws esri scraper, adjust dem resolution to meters
 
 # summary:
 # aggregates various location and impact/thresholds metadata to both automate and enhance some data entry for
@@ -53,14 +53,14 @@
 # [ ] Attachments               {poly, but not bold field in FIM reviewer}
 
 # TODO:
-# [x] Fork off partner URL requests (USGS DEM point service, FEMA) as they sometimes error out
-# [ ] Automate esri db calls?  Need to pass login info (FIM10 seems possible on non-noaa ESRI server?  Done with FEMA ESRI call, can do a small rewrite when FIM30 is live
+# [x] Fork off partner URL requests (USGS DEM point service, FEMA) as they sometimes error out - aka, only upload when necessary
+# [x] Automate esri db calls?  Need to pass login info (FIM10 seems possible on non-noaa ESRI server?  Done with FEMA ESRI call, can do a small rewrite when FIM30 is live
 # [ ] Better handle warnings from line 220'ish: merging on int and float columns where float values are not equal...
-# [ ] Incorporate usgs streamstats (i.e., AEP) where available (usually minimal impact upstream).
+# [x] Incorporate usgs streamstats (i.e., AEP) where available (usually minimal impact upstream).
 #     Example api call: https://streamstats.usgs.gov/gagestatsservices/statistics?statisticGroups=pfs&stationIDOrCode=14191000
-# [ ] Incorporate NWM AEP stats (how? ask MARFC) - also WRES
+# [x] Incorporate NWM AEP stats (how? ask MARFC) - also WRES
 # [ ] Compare NRLDB max stage & flow rating with USGS (look for usgs url/api or just url call)
-# [ ] Fill in metadata for FEMA Hazard Layer age at gage
+# [x] Fill in metadata for FEMA Hazard Layer age at gage
 # [ ] Should probably be transformed to OOP if further expanded to above fields... just joining different databases.
 
 import glob
@@ -78,6 +78,7 @@ import pdb
 
 # ===== global/user vars (not path related)
 get_partner = True  # gets usgs DEM and fema hazard info if True
+flowstage_src = 'offline' # offline for copied and pasted json's or online NWS ESRI REST calls
 
 # in NWPS, if both flow and stage are populated, the code takes care of 'most cases' in the function: check_threshold_type
 # the site below is still a flow threshold site, but has both flow and stage populated in the api metadata
@@ -134,6 +135,9 @@ dem_base_suffix_url = '&wkid=4326&units=Feet&includeDate=true'
 # https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/3/query?&geometry=-113.931%2C46.87722&geometryType=esriGeometryPoint&outFields=*&f=html
 fema_base_url = 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/3/query?'
 
+flow_base_url = 'https://maps.water.noaa.gov/server/rest/services/fim_libs/static_flow_based_catfim/MapServer/0/query?'
+stage_base_url = 'https://maps.water.noaa.gov/server/rest/services/fim_libs/static_stage_based_catfim/MapServer/0/query?'
+
 # ===== initial set up for requests and logging
 logging.basicConfig(format='%(asctime)s %(levelname)-4s %(message)s',
                     filename=os.path.join(log_dir, log_fn),
@@ -143,15 +147,54 @@ logging.basicConfig(format='%(asctime)s %(levelname)-4s %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
 # ===== functions
-def convert_fim_json_df(fullfn):
+def convert_fim_json_df(aoi, param, request_header):
     """
     dealing with fim geodatabase json output (see above links), with some nesting
     returns df with all columns
     """
-    with open(fullfn) as json_data:
-        j_data = json.load(json_data)
-        dict_df = pd.DataFrame(j_data['features'])
-        org_df = pd.DataFrame(list(dict_df['attributes'])) # probably has a more pythonic, cleaner way
+    if param not in ['stage', 'flow']:
+        logging.error('incorrect parameter (stage/flow) entered') 
+
+    if flowstage_src == 'offline':
+        if param == 'stage':
+            fullfn = os.path.join(stage_dir, aoi + stage_fn_suffix) 
+        elif param == 'flow':
+            fullfn = os.path.join(flow_dir, aoi + flow_fn_suffix)
+
+        with open(fullfn) as json_data:
+            j_data = json.load(json_data)
+
+    elif flowstage_src == 'online':
+        if param == 'stage':
+            nws_esri_base_url = stage_base_url
+        elif param == 'flow':
+            nws_esri_base_url = flow_base_url
+
+        if len(aoi) > 3:
+            query_loc_id = 'nws_data_rfc'
+        elif len(aoi) == 3:
+            query_loc_id = 'nws_data_wfo'
+        
+        aoi_caps = aoi.upper()
+
+        # needed to turn this cert off for home
+        http = urllib3.PoolManager(cert_reqs='CERT_NONE')
+
+        nws_esri_params = {
+                    'where': query_loc_id + " = '" + aoi_caps + "'",
+                    'returnGeometry': 'false',
+                    'outFields': '*',
+                    'f': 'pjson'
+                }
+        
+        nws_esri_url = nws_esri_base_url + urllib.parse.urlencode(nws_esri_params)
+        nws_esri_response = http.request('GET', nws_esri_url, headers = request_header)
+        j_data = json.loads(nws_esri_response.data.decode('utf8'))
+    else:
+        logging.error('incorrect flow/stage source chosen (offline/online)')
+
+    dict_df = pd.DataFrame(j_data['features'])
+    org_df = pd.DataFrame(list(dict_df['attributes'])) # probably has a more pythonic, cleaner way
 
     return org_df
 
@@ -243,7 +286,7 @@ def check_threshold_type(lid, obs_primary_unit, thresholds_df, rating_df, impact
 
     return threshold_type, max_stg, max_flow, return_df
 
-def add_meta_cols(df, threshold_type, max_stg, max_flow, dem_resolution, dem_yr, ahps_fim_exist, usgs_fim_exist, usgs_fim_yr, fema_effective_date, rfc_headwater):
+def add_meta_cols(df, threshold_type, max_stg, max_flow, dem_resolution, dem_yr, ahps_fim_exist, usgs_fim_exist, usgs_fim_yr, fema_effective_date, fema_older_dem, rfc_headwater):
     """
     tacking on extra metadata columns, ones with single values
     """
@@ -256,9 +299,33 @@ def add_meta_cols(df, threshold_type, max_stg, max_flow, dem_resolution, dem_yr,
     df['usgs_fim_yr'] = usgs_fim_yr
     df['fema_eff_date'] = fema_effective_date
     df['dem_yr'] = dem_yr
-    df['dem_resolution'] = dem_resolution
+    df['fema_older_dem'] = fema_older_dem
+    df['dem_res_m'] = dem_resolution
 
     return df
+
+def map_meter_resolution(dem_json):
+    """
+    outputting meter equivalent from scraped resolution (some are in arc-seconds)
+    defined here: https://www.usgs.gov/3d-elevation-program/about-3dep-products-services
+    emailed them about the issue, so USGS may change this at some point...
+    """
+    scraped_res = '{:0.4e}'.format(dem_json['resolution'])
+
+    if scraped_res == '1.0000e+00': # 1 meter
+        meter_res = '1'
+    elif scraped_res == '3.0864e-05': # 1/9 arc-second
+        meter_res = '3'
+    elif scraped_res == '5.0000e+00': # 5 m
+        meter_res = '5'
+    elif scraped_res == '9.2593e-05': # 1/3 arc-second
+        meter_res = '10'
+    elif scraped_res == '2.7778e-04': # 1 arc-second
+        meter_res = '30'
+    elif scraped_res == '5.5556e-04': # 1 arc-second
+        meter_res = '60'
+    
+    return meter_res
 
 def get_site_info(fims_df, aoi, request_header):
     """
@@ -285,7 +352,7 @@ def get_site_info(fims_df, aoi, request_header):
     usgs_fim_df = pd.json_normalize(usgs_fim_json['features'])
 
     if get_partner == False:
-        files_li = glob.glob(out_dir + '/*_' + aoi + org_static_fims_fn_suffix)
+        files_li = glob.glob(out_dir + '/*_' + aoi + '_' + flowstage_src + org_static_fims_fn_suffix)
         last_partner_fullfn = max(files_li, key=os.path.getctime)
         partner_df = pd.read_csv(last_partner_fullfn)
         logging.info('site scraping for nwps only, nationalmaps and fema data pulled from: ' + os.path.split(last_partner_fullfn)[1])
@@ -364,8 +431,9 @@ def get_site_info(fims_df, aoi, request_header):
                 rfc_headwater = 'no'
 
             # partner scraped metadata
-            if get_partner:
-                dem_resolution = '{:0.4e}'.format(dem_json['resolution'])
+            if get_partner:                
+                dem_resolution = map_meter_resolution(dem_json)                
+
                 #dem_date = pd.Timestamp(dem_json['attributes']['AcquisitionDate']).strftime('%Y-%m-%d')
                 # some ill-formed dates, for instance for agno3, acquisition date was '0/5/2013', instead just get year
                 dem_yr = dem_json['attributes']['AcquisitionDate'][-4:]
@@ -386,21 +454,28 @@ def get_site_info(fims_df, aoi, request_header):
                 dem_resolution = partner_df[partner_df['ahps_lid'] == lid]['dem_resolution'].iloc[0]
                 dem_yr = partner_df[partner_df['ahps_lid'] == lid]['dem_yr'].iloc[0]
                 fema_effective_date = partner_df[partner_df['ahps_lid'] == lid]['fema_eff_date'].iloc[0]
-                    
-            org_thresh_imp_df = add_meta_cols(thresh_imp_df, threshold_type, max_stg, max_flow, dem_resolution, dem_yr, ahps_fim_exist, usgs_fim_exist, usgs_fim_yr, fema_effective_date, rfc_headwater)
-            org_row = pd.DataFrame(add_meta_cols(row, threshold_type, max_stg, max_flow, dem_resolution, dem_yr, ahps_fim_exist, usgs_fim_exist, usgs_fim_yr, fema_effective_date, rfc_headwater)).T
+
+            if len(fema_effective_date) == 0:
+                fema_older_dem = ''
+            elif int(fema_effective_date[:4]) < int(dem_yr):
+                fema_older_dem = 'yes'
+            else:
+                fema_older_dem = 'no'
+            
+            org_thresh_imp_df = add_meta_cols(thresh_imp_df, threshold_type, max_stg, max_flow, dem_resolution, dem_yr, ahps_fim_exist, usgs_fim_exist, usgs_fim_yr, fema_effective_date, fema_older_dem, rfc_headwater)
+            org_row = pd.DataFrame(add_meta_cols(row, threshold_type, max_stg, max_flow, dem_resolution, dem_yr, ahps_fim_exist, usgs_fim_exist, usgs_fim_yr, fema_effective_date, fema_older_dem, rfc_headwater)).T
 
             org_thresh_imp_df.insert(loc=0, column='lid', value=lid)
             lid_df = org_thresh_imp_df.merge(fims_df, left_on='lid', right_on='ahps_lid', how='left').drop('ahps_lid', axis=1)
             
             if external_count == 0 and start_index == 0:
-                org_row.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + org_static_fims_fn_suffix), index=False)
-                thresh_imp_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + nwps_impact_fn_suffix), index=False)
-                lid_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + combined_out_fn_suffix), index=False)
+                org_row.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + org_static_fims_fn_suffix), index=False)
+                thresh_imp_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + nwps_impact_fn_suffix), index=False)
+                lid_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + combined_out_fn_suffix), index=False)
             else:
-                org_row.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + org_static_fims_fn_suffix), index=False, mode='a', header=False)
-                thresh_imp_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + nwps_impact_fn_suffix), index=False, mode='a', header=False)
-                lid_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + combined_out_fn_suffix), index=False, mode='a', header=False)
+                org_row.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + org_static_fims_fn_suffix), index=False, mode='a', header=False)
+                thresh_imp_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + nwps_impact_fn_suffix), index=False, mode='a', header=False)
+                lid_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + combined_out_fn_suffix), index=False, mode='a', header=False)
 
             external_count += 1
 
@@ -438,8 +513,9 @@ def main():
 
     for aoi in aois_li:
         logging.info(aoi + ' metadata gathering has started')
-        stage_df = convert_fim_json_df(os.path.join(stage_dir, aoi + stage_fn_suffix))
-        flow_df = convert_fim_json_df(os.path.join(flow_dir, aoi + flow_fn_suffix))
+        
+        stage_df = convert_fim_json_df(aoi, 'stage', request_header)
+        flow_df = convert_fim_json_df(aoi, 'flow', request_header)
 
         stage_want_df = stage_df.loc[:, stage_want_cols]
         fim_want_df = flow_df.loc[:, flow_want_cols]
@@ -456,7 +532,7 @@ def main():
         #final_df.to_csv(out_dir + combined_out_fn, index=False)
 
         #site_df.to_csv(out_dir + nwps_impact_fn, index=False)
-        static_fims_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + raw_static_fims_fn_suffix), index=False)
+        static_fims_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + raw_static_fims_fn_suffix), index=False)
 
         logging.info(aoi + ' metadata gathering has finished')
 

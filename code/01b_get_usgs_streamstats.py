@@ -43,6 +43,7 @@ import pdb
 # common AEP's of interest, leaving as strings to avoid potential rounding errors in array intersections
 aep_li = ['0.2', '1', '2', '4', '10', '20', '50']
 calc_nwm = False
+catfim_src = 'offline' # offline/online
 
 # ===== debugging var
 start_index = 0
@@ -288,7 +289,7 @@ def main():
 
     for aoi in aois_li:
         logging.info(aoi + ' streamstats gathering has started')
-        files_li = glob.glob(in_dir + '/*_' + aoi + catfim_meta_fn_suffix)
+        files_li = glob.glob(in_dir + '/*_' + aoi + '-' + catfim_src + catfim_meta_fn_suffix)
         last_catfim_fullfn = max(files_li, key=os.path.getctime)
         logging.info(aoi + ' is using ' + last_catfim_fullfn + ' for getting stats')
         catfim_df = pd.read_csv(last_catfim_fullfn)

@@ -175,6 +175,7 @@ def org_nwm_aeps(nwm_seg_df, aoi, request_header):
             nwm_aep_df = flowline_df.loc[:, flowline_df.columns.str.contains(col_search_str)]
 
             # mapping columns to aep's, renaming, and adding nwm_seg columns
+            # https://stackoverflow.com/questions/65966008/rename-columns-based-on-substring-and-dict-in-python
             regex = re.compile(r'^rf_(\d+)*')
             nwm_aep_df.columns = [rf_aep_dict[regex.match(colname)[0]] for colname in nwm_aep_df.columns]
             nwm_aep_df.loc[:, ['nwm_seg']] = pd.to_numeric(flowline_df['feature_id'])
