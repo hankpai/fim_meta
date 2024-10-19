@@ -118,6 +118,7 @@ def org_usgs(usgs_json, ahps_lid):
         return_df = org_df
         logging.info(ahps_lid + ' has a json, but no peak stats')
     else:
+        pdb.set_trace()
         # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
         if len(org_df.index) > len(aep_li):
             test_pref_df = org_df[org_df['usgs_description'].str.contains("Weighted")]
@@ -289,7 +290,7 @@ def main():
 
     for aoi in aois_li:
         logging.info(aoi + ' streamstats gathering has started')
-        files_li = glob.glob(in_dir + '/*_' + aoi + '-' + catfim_src + catfim_meta_fn_suffix)
+        files_li = glob.glob(in_dir + '/*_' + aoi + '_' + catfim_src + catfim_meta_fn_suffix)
         last_catfim_fullfn = max(files_li, key=os.path.getctime)
         logging.info(aoi + ' is using ' + last_catfim_fullfn + ' for getting stats')
         catfim_df = pd.read_csv(last_catfim_fullfn)
