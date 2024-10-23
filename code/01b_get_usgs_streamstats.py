@@ -90,6 +90,25 @@ def org_usgs(usgs_json, ahps_lid):
     pulls in relevant usgs streamstats for thresholds listed in the global var aep_li
     """
     temp_df = pd.DataFrame(usgs_json)
+    
+    # changing some of the order here, would like to take all the USGS AEP's, preferred or not, then do the temporary data frame
+    temp_select_cols_df = pd.concat([temp_df['isPreferred'],
+                                     temp_df[['value', 'citationID']],
+                                     pd.json_normalize(temp_df['regressionType'])], axis=1)
+    
+    aep_all_df = temp_select_cols_df[temp_select_cols_df['code'].str.contains('AEP')]\
+                                                                .drop(['metricUnitTypeID', 'englishUnitTypeID', 'statisticGroupTypeID'], axis=1)
+
+    usgs_aeps = aep_all_df['code'].str.rstrip('AEP')\
+                                  .str.split('PK', expand=True)[1]\
+                                  .str.replace('_', '.')
+
+    row_idxs = np.nonzero(np.in1d(usgs_aeps, aep_li))[0].tolist()  # getting row indices from aep percent to then pluck from perf_df
+
+    pdb.set_trace()
+    
+    
+    
     # taking preferred USGS AEP, note yearsofRecord only taken from empirical AEP (vs. regression/algorithmic AEP)
     # otherwise yearsofRecord should be NA, removed for now 
     pref_df = temp_df[temp_df['isPreferred']==True][['value', 'citationID', 'regressionType']]
