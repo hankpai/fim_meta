@@ -52,8 +52,8 @@ Data outputs:
 2. __out/catfim/[yyyymmdd]\_[aoi]\_[source = online/offline]\_catFim_meta.csv__ - locations that exist on NWPS, pulled from above file (Data Output 1) and adding multiple metadata from NWPS, USGS, FEMA (Data Inputs 2, 3, 4, 5, 7)
 3. __out/catfim/[yyyymmdd]\_[aoi]\_[source = online/offline]\_impacts_meta.csv__ - combining impacts & thresholds at various stage/flow values along with some point metadata (Data input 4)
 4. __out/catfim/[yyyymmdd]\_[aoi]\_[source = online/offline]\_catFimReview_meta_stagePrioritized_wExceptions.csv__ - combining Data Output (2 & 3) for final output; stage thresholds are generally prioritized (see Issues below) and exceptions are hardcoded in (so flow threshold site(s))
-5. __out/stats/[yyyymmdd]\_[aoi]\_usgs_all_streamstats.csv__ - verbose export for USGS streamstats, generally preferring weighted AEP regression, unless otherwise stated (preference from communication via correspondence with Oregon USGS, but may vary by state).  Note, several Montana sites are downstream of reservoirs and they explicitly AEP is related to regulated and not naturalized flow
-6. __out/stats/[yyyymmdd]\_[aoi]\_usgs_slim_streamstats.csv__ - slimmed export for USGS streamstats, removing some metadata
+5. __out/stats/[yyyymmdd]\_[aoi]\_[source = online/offline]\_usgs_all_streamstats.csv__ - verbose export for USGS streamstats outputting all flavors of usgs streamstats along with preferred columns. 
+6. __out/stats/[yyyymmdd]\_[aoi]\_[source = online/offline]\_usgs_slim_streamstats.csv__ - slimmed export for USGS streamstats, removing some metadata.  Generally preferred weighted AEP regression, unless otherwise stated (preference from communication via correspondence with Oregon USGS, but may vary by state).  Note, several Montana sites are downstream of reservoirs and they explicitly AEP is related to regulated and not naturalized flow
 7. __out/db_calls/[yyyymmdd]\_[aoi]\_nwm_aep_stats.csv__ - OPTIONAL, generating query for ArcGIS Pro ESRI call
 8. __out/stats/[yyyymmdd]\_[aoi]\_[source = online/offline]\_stats_normErr.csv__ - aggregates USGS and NRP AEP's and calculates normalized error to provide some caution noted in Reference 1
 
@@ -79,3 +79,4 @@ TODO:
 - [x] Map DEM resolution to meters
 - [ ] Expand output 5 to include all flavors of USGS estimated AEP (empirical, weighted, and others that are provided)
 - [ ] OPTIONAL finish trying to calculate NWM AEP's with low flow outlier filters
+- [ ] OPTIONAL work to make more OOP based
