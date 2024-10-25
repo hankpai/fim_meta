@@ -322,7 +322,7 @@ def map_meter_resolution(dem_json):
         meter_res = '10'
     elif scraped_res == '2.7778e-04': # 1 arc-second
         meter_res = '30'
-    elif scraped_res == '5.5556e-04': # 1 arc-second
+    elif scraped_res == '5.5556e-04': # 2 arc-second
         meter_res = '60'
     
     return meter_res

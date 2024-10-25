@@ -1,8 +1,8 @@
 # original author(s):   henry pai (nwrfc)
 # contact info:         henry <dot> pai <at> noaa <dot> gov
 # last edit by:         hp
-# last edit time:       Sep 2024
-# last edit comment:    exception handling for getting USGS streamstats
+# last edit time:       Oct 2024
+# last edit comment:    edited to return all USGS streamstats
 
 # summary:
 # aggregates AEP stats from USGS; note NWM stats from USGS Bulletin 17C eq. 11 - implemented, but not output as values were >> usgs stats
@@ -96,96 +96,83 @@ def org_usgs(usgs_json, ahps_lid):
                                      temp_df[['value', 'citationID']],
                                      pd.json_normalize(temp_df['regressionType'])], axis=1)
     
+    # pulling AEP rows
     aep_all_df = temp_select_cols_df[temp_select_cols_df['code'].str.contains('AEP')]\
-                                                                .drop(['metricUnitTypeID', 'englishUnitTypeID', 'statisticGroupTypeID'], axis=1)
+                                                                .drop(['id', 'metricUnitTypeID', 'englishUnitTypeID', 'statisticGroupTypeID'], axis=1)\
+                                                                .reset_index(drop=True)
 
-    usgs_aeps = aep_all_df['code'].str.rstrip('AEP')\
-                                  .str.split('PK', expand=True)[1]\
-                                  .str.replace('_', '.')
-
-    row_idxs = np.nonzero(np.in1d(usgs_aeps, aep_li))[0].tolist()  # getting row indices from aep percent to then pluck from perf_df
-
-    pdb.set_trace()
-    
-    
-    
-    # taking preferred USGS AEP, note yearsofRecord only taken from empirical AEP (vs. regression/algorithmic AEP)
-    # otherwise yearsofRecord should be NA, removed for now 
-    pref_df = temp_df[temp_df['isPreferred']==True][['value', 'citationID', 'regressionType']]
-
-    if pref_df.empty:
-        # handling case when there is no preference
-        pref_df = temp_df[['value', 'citationID', 'regressionType']]
-
-    stats_meta = pd.DataFrame(list(pref_df['regressionType']))
-
-    # removes AEP, then splits by PK, then replaces underscore with decimal
-    aep_percent = stats_meta['code'].str.rstrip('AEP')\
+    if aep_all_df.empty:
+        # case where json is present but no AEP stats (lilc2, usgs: 09260000)
+        final_pref_df = aep_all_df.copy()
+        usgs_aeps_df = aep_all_df.copy()
+        logging.info(ahps_lid + ' has a json, but no AEP stats')
+    else:
+        # pulling AEP numeric values
+        usgs_aeps = aep_all_df['code'].str.rstrip('AEP')\
                                     .str.split('PK', expand=True)[1]\
                                     .str.replace('_', '.')
 
-    row_idxs = np.nonzero(np.in1d(aep_percent, aep_li))[0].tolist()  # getting row indices from aep percent to then pluck from perf_df
+        usgs_row_idxs = np.nonzero(np.in1d(usgs_aeps, aep_li))[0].tolist()  # getting row indices from aep percent to then pluck from perf_df
 
-    org_df = pref_df.iloc[row_idxs][['value', 'citationID']].reset_index(drop=True)
-    org_df['aep_percent'] = aep_percent[row_idxs].reset_index(drop=True)
-    org_df['usgs_name'] = stats_meta.iloc[row_idxs]['name'].reset_index(drop=True)
-    org_df['usgs_description'] = stats_meta.iloc[row_idxs]['description'].reset_index(drop=True)
-    org_df = org_df[org_df['usgs_description'].notna()]
+        usgs_aeps_df = aep_all_df.copy().iloc[usgs_row_idxs].reset_index(drop=True)
+        usgs_aeps_df['aep_percent'] = [float(i) for i in usgs_aeps[usgs_row_idxs].reset_index(drop=True)]
 
-    if org_df.empty:
-        # case where json is present but no AEP stats (lilc2, usgs: 09260000)
-        return_df = org_df
-        logging.info(ahps_lid + ' has a json, but no peak stats')
-    else:
-        pdb.set_trace()
-        # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
-        if len(org_df.index) > len(aep_li):
-            test_pref_df = org_df[org_df['usgs_description'].str.contains("Weighted")]
-            usgs_stat_type = 'weighted' 
-            logging.info(ahps_lid + ' : no preferred usgs stats, choose weighted')
-            if test_pref_df.empty == True:
-                test_pref_df = org_df[org_df['usgs_description'].str.contains("Maximum")]
-                logging.info(ahps_lid + ' : no preferred usgs stats, choose empirical')
-                usgs_stat_type = 'empirical' 
-            
-            # if the preferred has old citations, choose the most frequent citation (ensures one flow per percent)
-            # coss2 (usgs: 06482610) is an example
-            if len(test_pref_df) > len(aep_li):
-                most_frequent_cite = test_pref_df.citationID.mode()[0]
-                assign_pref_df = test_pref_df[test_pref_df.citationID == most_frequent_cite]
-                logging.info(ahps_lid + ' has multiple flows per percent, most frequent citation chosen')
-            else:
-                assign_pref_df = test_pref_df
+        usgs_aeps_df.rename(columns={'value' : 'usgsFlow_cfs',
+                                    'isPreferred' : 'usgs_pref',
+                                    'name' : 'usgs_name',
+                                    'description' : 'usgs_description'}, inplace=True)
+
+        # second answer: https://stackoverflow.com/questions/9987483/elif-in-list-comprehension-conditionals
+        # mapping stat type to first word of description
+        stat_dict = {'Weighted' : 'weighted', 'Maximum' : 'station', 'Regression' : 'regression'}
+        usgs_aeps_df['usgs_stat_type'] = [stat_dict.get(desc.split(' ')[0], 'other') for desc in usgs_aeps_df['usgs_description']] 
+        pref_df = usgs_aeps_df[usgs_aeps_df['usgs_pref'] == True]
+
+        if pref_df.empty:
+            usgs_aeps_df.drop(['usgs_description'], axis=1, inplace=True)
+            final_pref_df = usgs_aeps_df.copy()
+            logging.info(ahps_lid + ' has a no usgs preferred designation')
         else:
-            # so, some exception handling as aftw3 (usgs: 05430500) has two methods that are 'preferred'
-            # so handling the by choosing the most 'frequent' preferred method
-            first_word_desc = org_df.usgs_description.str.split().str.get(0)
-            most_frequent_word = first_word_desc.mode()[0]  #most frequent
+            # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
+            if len(pref_df.index) > len(aep_li):
+                test_pref_df = pref_df[pref_df['usgs_stat_type'] == 'weighted']
+                logging.info(ahps_lid + ' : no preferred usgs stats, choose weighted')
+                if test_pref_df.empty == True:
+                    test_pref_df = pref_df[pref_df['usgs_stat_type'] == 'station']
+                    logging.info(ahps_lid + ' : no preferred usgs stats, choose station')
+                
+                # if the preferred has old citations, choose the most frequent citation (ensures one flow per percent)
+                # coss2 (usgs: 06482610) is an example
+                if len(test_pref_df) > len(aep_li):
+                    most_frequent_cite = test_pref_df.citationID.mode()[0]
+                    assign_pref_df = test_pref_df[test_pref_df.citationID == most_frequent_cite]
+                    logging.info(ahps_lid + ' has multiple flows per percent, most frequent citation chosen')
+                else:
+                    assign_pref_df = test_pref_df
+            else:
+                # so, some exception handling as aftw3 (usgs: 05430500) has two methods that are 'preferred'
+                # so handling the by choosing the most 'frequent' preferred method
+                first_word_desc = pref_df.usgs_description.str.split().str.get(0)
+                most_frequent_word = first_word_desc.mode()[0]  #most frequent
 
-            most_frequent_df = org_df[first_word_desc == most_frequent_word]
-            if len(org_df) != len(most_frequent_df):
-                logging.info(ahps_lid + ' has multiple flows per percent, most frequent method chosen')
-            
-            if most_frequent_word == 'Weighted':
-                usgs_stat_type = 'weighted'
-            elif most_frequent_word == 'Maximum':
-                usgs_stat_type = 'empirical'
-            elif most_frequent_word == 'Regression':
-                usgs_stat_type = 'regression'
-            else: 
-                usgs_stat_type = 'other'
-            assign_pref_df = most_frequent_df
+                most_frequent_df = pref_df[first_word_desc == most_frequent_word]
+                if len(pref_df) != len(most_frequent_df):
+                    logging.info(ahps_lid + ' has multiple flows per percent, most frequent method chosen')
+                
+                assign_pref_df = most_frequent_df
 
-        # some cleaning and sorting
-        numeric_aeps = [float(i) for i in assign_pref_df['aep_percent']]
-        temp_df = assign_pref_df.copy()
-        temp_df['aep_percent'] = numeric_aeps
-        rename_df = temp_df.rename(columns={'value':'usgsFlow_cfs'})
-        sort_df = rename_df.sort_values('usgsFlow_cfs')
-        return_df = sort_df.drop(['usgs_description'], axis=1)
-        return_df['usgs_stat_type'] = usgs_stat_type
+            # some cleaning and sorting
+            temp_copy_df = assign_pref_df.copy()
+            sort_df = temp_copy_df.sort_values('usgsFlow_cfs')
+            usgs_aeps_df.drop(['usgs_description'], axis=1, inplace=True)
+            final_pref_df = sort_df.drop(['usgs_description'], axis=1)
 
-    return(return_df)
+            # inserting nws/my preference 
+            same_row_ids = pd.merge(usgs_aeps_df.reset_index(), final_pref_df, on=final_pref_df.columns.tolist())['index'].tolist()
+            usgs_aeps_df.insert(0, 'nws_pref', False)
+            usgs_aeps_df.loc[same_row_ids, ['nws_pref']] = True
+
+    return(final_pref_df, usgs_aeps_df)
 
 def org_nwm(nwm_ds, water_yr):
     """
@@ -218,12 +205,21 @@ def org_nwm(nwm_ds, water_yr):
     return_df['nwmFlow_cfs'] = x_q_li
 
     return(return_df)
+
+def insert_site_meta(df, row):
+    ''' just adding to start of dataframe'''
+    df.insert(0, 'ratingMax_cfs', row.rating_max_flow)
+    df.insert(0, 'nwm_streamOrder', row.nwm_feature_data_stream_order)
+    df.insert(0, 'rfc_headwater', row.rfc_headwater)
+    df.insert(0, 'wfo', row.nws_data_wfo)
+    df.insert(0, 'ahps_lid', row.ahps_lid)
     
 def get_site_info(mapping_df, request_header, aoi, ds):
     """
     loop through getting usgs streamstats and attempted NWM retrospective v3 streamstats
     """
-    loop_li = []
+    pref_li = []
+    all_li = []
     
     external_count = 0
     for i, row in mapping_df.iloc[start_index:].iterrows():
@@ -242,9 +238,10 @@ def get_site_info(mapping_df, request_header, aoi, ds):
             if len(usgs_json) == 0:
                 logging.info(row.ahps_lid + ' missing usgs json or empty page')
             else:
-                usgs_df = org_usgs(usgs_json, row.ahps_lid)
+                print(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(usgs_num_str))
+                pref_df, all_df = org_usgs(usgs_json, row.ahps_lid)
 
-                if usgs_df.empty == False:
+                if pref_df.empty == False:
                     if calc_nwm:
                         # as of 2024 Sep, the retro run goes from 1979 Feb to 2023 Feb
                         nwm_ds = ds.sel(feature_id=row.nwm_seg)['streamflow'].sel(time=slice('1979-10-01', '2022-09-30'))
@@ -252,15 +249,12 @@ def get_site_info(mapping_df, request_header, aoi, ds):
                         nwm_ds.coords['water_yr'] = water_yr # https://stackoverflow.com/questions/72268056/python-adding-a-water-year-time-variable-in-an-x-array
                         nwm_df = org_nwm(nwm_ds, water_yr)
 
-                        site_df = nwm_df.merge(usgs_df, how='left', on='aep_percent')
+                        site_df = nwm_df.merge(pref_df, how='left', on='aep_percent')
                     else:
-                        site_df = usgs_df
-                                        
-                    site_df.insert(0, 'ratingMax_cfs', row.rating_max_flow)
-                    site_df.insert(0, 'nwm_streamOrder', row.nwm_feature_data_stream_order)
-                    site_df.insert(0, 'rfc_headwater', row.rfc_headwater)
-                    site_df.insert(0, 'wfo', row.nws_data_wfo)
-                    site_df.insert(0, 'ahps_lid', row.ahps_lid)
+                        site_df = pref_df
+                    
+                    insert_site_meta(site_df, row)
+                    insert_site_meta(all_df, row)
 
                     """ below is commented out to write to file one time in main section.  ensures simple_df is written correctly via column
                     simple_df = site_df[['ahps_lid', 
@@ -281,15 +275,17 @@ def get_site_info(mapping_df, request_header, aoi, ds):
                         simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + slim_usgs_fn_suffix), mode='a', header=False)
                     """
 
-                    print(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(usgs_num_str))
                     logging.info(str(i) + ' : ' + aoi + ' - ' + row.ahps_lid + ' = ' + str(usgs_num_str))
 
                     external_count += 1
-                    loop_li.append(site_df)
+                    pref_li.append(site_df)
+                    all_li.append(all_df)
 
     logging.info('scraping done')
-    return_df = pd.concat(loop_li)
-    return(return_df)
+    return_pref_df = pd.concat(pref_li)
+    return_all_df = pd.concat(all_li)
+
+    return(return_pref_df, return_all_df)
     
 def main():
     with open(os.path.join(ctrl_dir, yaml_fn)) as f:
@@ -322,7 +318,7 @@ def main():
                                  'nwm_feature_data_stream_order',
                                  'rating_max_flow']]
         
-        stats_df = get_site_info(usgs_map_df, request_header, aoi, ds)
+        stats_df, all_df = get_site_info(usgs_map_df, request_header, aoi, ds)
 
         simple_df = stats_df[['ahps_lid', 
                               'wfo', 
@@ -335,8 +331,8 @@ def main():
                                                     columns='aep_percent', 
                                                     values='usgsFlow_cfs') 
         
-        stats_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + full_usgs_fn_suffix), index=False)
-        simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + slim_usgs_fn_suffix))
+        all_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + catfim_src + full_usgs_fn_suffix), index=False)
+        simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + catfim_src + slim_usgs_fn_suffix))
 
         logging.info(aoi + ' streamstats gathering has finished')
     
