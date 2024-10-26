@@ -78,6 +78,6 @@ TODO:
 - [ ] Find way to make point DEM 3dep metadata query more robust (not time out)
 - [x] Map DEM resolution to meters
 - [x] Expand output 5 to include all flavors of USGS estimated AEP (empirical, weighted, and others that are provided)
-- [ ] Check if FEMA BFE (base flood elevations for 1% AEP are available/scrapeable).  If yes, translate the BFE to flow from current rating
+- [ ] Check if FEMA BFE (base flood elevations for 1% AEP are available/scrapeable).  If yes, translate the BFE to flow from current rating (Johnathan suggested)
 - [ ] OPTIONAL finish trying to calculate NWM AEP's with low flow outlier filters
 - [ ] OPTIONAL work to make more OOP based
