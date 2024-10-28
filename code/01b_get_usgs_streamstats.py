@@ -37,6 +37,7 @@ import logging
 import urllib3
 import xarray as xr
 import fsspec
+import re
 import pdb
 
 # ===== global/user vars (not path related)
@@ -46,7 +47,7 @@ calc_nwm = False
 catfim_src = 'offline' # offline/online
 
 # ===== debugging var
-start_index = 0
+start_index = 0 # 285 crli2 for CR, good test for regulated, multiple aep methods
 #start_index = 398 # should be used when debugging, otherwise comment out
 
 # ===== directories & filenames (site/computer specific)
@@ -98,7 +99,11 @@ def org_usgs(usgs_json, ahps_lid):
     
     # pulling AEP rows
     aep_all_df = temp_select_cols_df[temp_select_cols_df['code'].str.contains('AEP')]\
-                                                                .drop(['id', 'metricUnitTypeID', 'englishUnitTypeID', 'statisticGroupTypeID'], axis=1)\
+                                                                .drop(['id', 
+                                                                       'metricUnitTypeID',
+                                                                       'englishUnitTypeID',
+                                                                       'statisticGroupTypeID',
+                                                                       'description'], axis=1)\
                                                                 .reset_index(drop=True)
 
     if aep_all_df.empty:
@@ -109,8 +114,8 @@ def org_usgs(usgs_json, ahps_lid):
     else:
         # pulling AEP numeric values
         usgs_aeps = aep_all_df['code'].str.rstrip('AEP')\
-                                    .str.split('PK', expand=True)[1]\
-                                    .str.replace('_', '.')
+                                      .str.split('PK', expand=True)[1]\
+                                      .str.replace('_', '.')
 
         usgs_row_idxs = np.nonzero(np.in1d(usgs_aeps, aep_li))[0].tolist()  # getting row indices from aep percent to then pluck from perf_df
 
@@ -118,28 +123,30 @@ def org_usgs(usgs_json, ahps_lid):
         usgs_aeps_df['aep_percent'] = [float(i) for i in usgs_aeps[usgs_row_idxs].reset_index(drop=True)]
 
         usgs_aeps_df.rename(columns={'value' : 'usgsFlow_cfs',
-                                    'isPreferred' : 'usgs_pref',
-                                    'name' : 'usgs_name',
-                                    'description' : 'usgs_description'}, inplace=True)
+                                     'isPreferred' : 'usgs_pref',
+                                     'name' : 'usgs_name'}, inplace=True)
+                                     #'description' : 'usgs_description'}, inplace=True)
 
         # second answer: https://stackoverflow.com/questions/9987483/elif-in-list-comprehension-conditionals
         # mapping stat type to first word of description
-        stat_dict = {'Weighted' : 'weighted', 'Maximum' : 'station', 'Regression' : 'regression'}
-        usgs_aeps_df['usgs_stat_type'] = [stat_dict.get(desc.split(' ')[0], 'other') for desc in usgs_aeps_df['usgs_description']] 
+        stat_dict = {'WPK' : 'weighted', 'PK' : 'station', 'RPK' : 'regression', 'APK' : 'alternate', 'GPK' : 'regulated'}
+        nws_pref_dict = {'WPK' : 1, 'PK' : 2, 'RPK' : 3, 'APK' : 4, 'GPK' : 10}
+        usgs_aeps_df['usgs_stat_type'] = [stat_dict.get(re.sub(r'\d+', ' ', code).split(' ')[0], 'other') for code in usgs_aeps_df['code']]
+        usgs_aeps_df['nws_pref_order'] = [nws_pref_dict.get(re.sub(r'\d+', ' ', code).split(' ')[0], ) for code in usgs_aeps_df['code']]
+        usgs_aeps_df.loc[usgs_aeps_df['usgs_stat_type'] == 'regulated', 'usgs_pref'] = False  # regulated should be used as last result, want naturalized flow
         pref_df = usgs_aeps_df[usgs_aeps_df['usgs_pref'] == True]
 
         if pref_df.empty:
-            usgs_aeps_df.drop(['usgs_description'], axis=1, inplace=True)
-            final_pref_df = usgs_aeps_df.copy()
+            if len(usgs_aeps_df.index) > len(aep_li):
+                final_pref_df = usgs_aeps_df.copy().loc[usgs_aeps_df['nws_pref_order'] == usgs_aeps_df.nws_pref_order.min()].sort_values('usgsFlow_cfs')
+            else:
+                final_pref_df = usgs_aeps_df.copy().sort_values('usgsFlow_cfs')
             logging.info(ahps_lid + ' has a no usgs preferred designation')
         else:
             # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
             if len(pref_df.index) > len(aep_li):
-                test_pref_df = pref_df[pref_df['usgs_stat_type'] == 'weighted']
-                logging.info(ahps_lid + ' : no preferred usgs stats, choose weighted')
-                if test_pref_df.empty == True:
-                    test_pref_df = pref_df[pref_df['usgs_stat_type'] == 'station']
-                    logging.info(ahps_lid + ' : no preferred usgs stats, choose station')
+                test_pref_df = pref_df.loc[pref_df['nws_pref_order'] == pref_df.nws_pref_order.min()]
+                logging.info(ahps_lid + ' : no preferred usgs stats, choose by nws_pref_order: weighted, station, regression, alternate, other, regulated')
                 
                 # if the preferred has old citations, choose the most frequent citation (ensures one flow per percent)
                 # coss2 (usgs: 06482610) is an example
@@ -152,25 +159,23 @@ def org_usgs(usgs_json, ahps_lid):
             else:
                 # so, some exception handling as aftw3 (usgs: 05430500) has two methods that are 'preferred'
                 # so handling the by choosing the most 'frequent' preferred method
-                first_word_desc = pref_df.usgs_description.str.split().str.get(0)
-                most_frequent_word = first_word_desc.mode()[0]  #most frequent
+                code_desc = [re.sub(r'\d+', ' ', code).split(' ')[0] for code in pref_df['code']]
 
-                most_frequent_df = pref_df[first_word_desc == most_frequent_word]
+                most_frequent_code = pd.Series(code_desc).mode()[0]  #most frequent
+
+                most_frequent_df = pref_df.iloc[[i for i, desc in enumerate(code_desc) if desc == most_frequent_code]]
                 if len(pref_df) != len(most_frequent_df):
                     logging.info(ahps_lid + ' has multiple flows per percent, most frequent method chosen')
                 
                 assign_pref_df = most_frequent_df
 
-            # some cleaning and sorting
-            temp_copy_df = assign_pref_df.copy()
-            sort_df = temp_copy_df.sort_values('usgsFlow_cfs')
-            usgs_aeps_df.drop(['usgs_description'], axis=1, inplace=True)
-            final_pref_df = sort_df.drop(['usgs_description'], axis=1)
+            # sorting
+            final_pref_df = assign_pref_df.copy().sort_values('usgsFlow_cfs')
 
-            # inserting nws/my preference 
-            same_row_ids = pd.merge(usgs_aeps_df.reset_index(), final_pref_df, on=final_pref_df.columns.tolist())['index'].tolist()
-            usgs_aeps_df.insert(0, 'nws_pref', False)
-            usgs_aeps_df.loc[same_row_ids, ['nws_pref']] = True
+    # inserting nws/my preference 
+    same_row_ids = pd.merge(usgs_aeps_df.reset_index(), final_pref_df, on=final_pref_df.columns.tolist())['index'].tolist()
+    usgs_aeps_df.insert(0, 'nws_pref', False)
+    usgs_aeps_df.loc[same_row_ids, ['nws_pref']] = True
 
     return(final_pref_df, usgs_aeps_df)
 
