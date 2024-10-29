@@ -52,9 +52,6 @@ import pdb
 aep_li = ['2', '4', '10', '20', '50']
 usgs_keep_cols = ['ahps_lid', 'wfo', 'rfc_headwater', 'nwm_streamOrder', 'usgs_stat_type', 'ratingMax_cfs']
 
-# sources: offline (fim_libs --> nwm_aep_inundation_extent_library_noaa; login required), online (reference --> static_nwm_flowlines; no login)
-nwm_aep_src = 'online'
-
 # taken from usbr scraper script as REST/url calls cannot exceed 2048 characters
 # 100 nwm stream reach ids generated url of 1867 characters while 110 generated 2037
 max_nwm_ids = 100
@@ -77,14 +74,23 @@ yaml_fn = 'config.yaml'
 areas_fn = 'nws_aois.csv'
 
 # input file info
-catfim_meta_fn_suffix = '_catFim_meta.csv'
-usgs_stats_fn_suffix = '_usgs_slim_streamstats.csv'
+catfim_meta_fn_suffix1 = '_catFim_meta.csv'
+usgs_stats_fn_suffix1 = '_usgsSlimStats.csv'
 nwm_aep_fns_suffix = '_nwmAep.txt'
 
 # output files
 log_fn = 'aep_streamstats.log'
 out_fn_prefix = pd.Timestamp.now().strftime('%Y%m%d') + '_'
-out_fn_suffix = '_stats_normErr.csv'
+out_fn_suffix1 = '_statsCompare.csv'
+
+with open(os.path.join(ctrl_dir, yaml_fn)) as f:
+# NWRFC settings for request headers, keeping hidden in yaml file
+# not super happy to make this global
+    yaml_data = yaml.full_load(f)
+    request_header = {'User-Agent' : yaml_data['user_agent']}
+    catfim_meta_fn_suffix2 = '_' + yaml_data['station_src'] + 'Stalist' + catfim_meta_fn_suffix1
+    usgs_stats_fn_suffix2 = '_' + yaml_data['station_src'] + 'Stalist' + usgs_stats_fn_suffix1
+    out_fn_suffix2 =  '_' + yaml_data['nwm_aep_src'] + 'NwmAep_' + yaml_data['station_src'] + 'Stalist' + out_fn_suffix1
 
 # ===== url info
 flowline_base_url = 'https://maps.water.noaa.gov/server/rest/services/reference/static_nwm_flowlines/MapServer/0/query?'
@@ -120,7 +126,7 @@ def org_nwm_aeps(nwm_seg_df, aoi, request_header):
 
     loop_li = []
 
-    if nwm_aep_src == 'offline':
+    if yaml_data['nwm_aep_src'] == 'offline':
         for i, aep in enumerate(aep_li):
             # grabbing most recent copy and paste files per aep
             aep_str = aep.zfill(2)
@@ -139,12 +145,12 @@ def org_nwm_aeps(nwm_seg_df, aoi, request_header):
 
         # merging/concatenating
         return_df = pd.concat(loop_li, axis=1)
-    elif nwm_aep_src == 'online':
+    elif yaml_data['nwm_aep_src'] == 'online':
         # needed to turn this cert off for home
         http = urllib3.PoolManager(cert_reqs='CERT_NONE')
 
         for i in range(0, len(nwm_seg_df), max_nwm_ids):
-            logging.info(aoi + ' ' + nwm_aep_src + ' aggregation started for index starting at ' + str(i))
+            logging.info(aoi + ' ' + yaml_data['nwm_aep_src'] + ' nwm aep data aggregation started for index starting at ' + str(i))
             # subsetting and generating call
             nwm_seg_subset_df = nwm_seg_df.iloc[i:(i + max_nwm_ids)]
             nwm_segs_li = nwm_seg_subset_df['nwm_seg'].tolist() # still works ok if i + max_nwm_ids > total len of df
@@ -215,14 +221,14 @@ def main():
     usgs_aep_rename_li = [i.zfill(2) + '_usgs' for i in aep_li]
 
     for aoi in aois_li:
-        logging.info(aoi + ' AEP stats aggregation has started for NWM source ' + nwm_aep_src)
+        logging.info(aoi + ' AEP stats aggregation has started for NWM source ' + yaml_data['nwm_aep_src'])
         
         # some repetition here with script
-        catfim_files_li = glob.glob(in_catfim_dir + '/*_' + aoi + catfim_meta_fn_suffix)
+        catfim_files_li = glob.glob(in_catfim_dir + '/*_' + aoi + catfim_meta_fn_suffix2)
         last_catfim_fullfn = max(catfim_files_li, key=os.path.getctime)
         catfim_df = pd.read_csv(last_catfim_fullfn)
 
-        usgs_stats_files_li = glob.glob(stats_dir + '/*_' + aoi + usgs_stats_fn_suffix)
+        usgs_stats_files_li = glob.glob(stats_dir + '/*_' + aoi + usgs_stats_fn_suffix2)
         usgs_last_stats_fullfn = max(usgs_stats_files_li, key=os.path.getctime)
         usgs_df = pd.read_csv(usgs_last_stats_fullfn)
 
@@ -245,9 +251,9 @@ def main():
         norm_error_df = calc_norm_err(usgs_slim_df, nwm_stats_df)
 
         final_df = merged_df.merge(norm_error_df, left_index=True, right_index=True)
-        final_df.to_csv(os.path.join(stats_dir, out_fn_prefix + aoi + '_' + nwm_aep_src + out_fn_suffix))
+        final_df.to_csv(os.path.join(stats_dir, out_fn_prefix + aoi + out_fn_suffix2))
 
-        logging.info(aoi + ' AEP stats aggregation has finished for NWM source ' + nwm_aep_src)
+        logging.info(aoi + ' AEP stats aggregation has finished for NWM AEP data sourced ' + yaml_data['nwm_aep_src'])
 
     logging.shutdown()
 

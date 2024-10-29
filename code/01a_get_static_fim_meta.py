@@ -78,7 +78,6 @@ import pdb
 
 # ===== global/user vars (not path related)
 get_partner = True  # gets usgs DEM and fema hazard info if True
-flowstage_src = 'offline' # offline for copied and pasted json's or online NWS ESRI REST calls
 
 # in NWPS, if both flow and stage are populated, the code takes care of 'most cases' in the function: check_threshold_type
 # the site below is still a flow threshold site, but has both flow and stage populated in the api metadata
@@ -120,10 +119,20 @@ usgs_fim_fn = 'usgs_fim.json'
 # output files
 log_fn = 'catfim_meta.log'
 out_fn_prefix = pd.Timestamp.now().strftime('%Y%m%d') + '_'
-combined_out_fn_suffix =  '_catFimReview_meta_stagePrioritized_wExceptions.csv'
-raw_static_fims_fn_suffix = '_raw_catFim_meta.csv'
-org_static_fims_fn_suffix = '_catFim_meta.csv'
-nwps_impact_fn_suffix = '_impacts_meta.csv'
+combined_out_fn_suffix1 =  '_catFimImpacts_meta.csv'
+raw_static_fims_fn_suffix1 = '_rawCatFim_meta.csv'
+org_static_fims_fn_suffix1 = '_catFim_meta.csv'
+nwps_impact_fn_suffix1 = '_impacts_meta.csv'
+
+with open(os.path.join(ctrl_dir, yaml_fn)) as f:
+# NWRFC settings for request headers, keeping hidden in yaml file
+# not super happy to make this global
+    yaml_data = yaml.full_load(f)
+    request_header = {'User-Agent' : yaml_data['user_agent']}
+    combined_out_fn_suffix2 =  '_' + yaml_data['station_src'] + 'Stalist' + combined_out_fn_suffix1
+    raw_static_fims_fn_suffix2 = '_' + yaml_data['station_src'] + 'Stalist' + raw_static_fims_fn_suffix1
+    org_static_fims_fn_suffix2 = '_' + yaml_data['station_src'] + 'Stalist' + org_static_fims_fn_suffix1
+    nwps_impact_fn_suffix2 = '_' + yaml_data['station_src'] + 'Stalist' + nwps_impact_fn_suffix1
 
 # ===== url info
 nwps_base_url = 'https://api.water.noaa.gov/nwps/v1/gauges/'
@@ -147,7 +156,7 @@ logging.basicConfig(format='%(asctime)s %(levelname)-4s %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
 # ===== functions
-def convert_fim_json_df(aoi, param, request_header):
+def convert_fim_json_df(aoi, param):
     """
     dealing with fim geodatabase json output (see above links), with some nesting
     returns df with all columns
@@ -155,7 +164,7 @@ def convert_fim_json_df(aoi, param, request_header):
     if param not in ['stage', 'flow']:
         logging.error('incorrect parameter (stage/flow) entered') 
 
-    if flowstage_src == 'offline':
+    if yaml_data['station_src'] == 'offline':
         if param == 'stage':
             fullfn = os.path.join(stage_dir, aoi + stage_fn_suffix) 
         elif param == 'flow':
@@ -164,7 +173,7 @@ def convert_fim_json_df(aoi, param, request_header):
         with open(fullfn) as json_data:
             j_data = json.load(json_data)
 
-    elif flowstage_src == 'online':
+    elif yaml_data['station_src'] == 'online':
         if param == 'stage':
             nws_esri_base_url = stage_base_url
         elif param == 'flow':
@@ -327,7 +336,7 @@ def map_meter_resolution(dem_json):
     
     return meter_res
 
-def get_site_info(fims_df, aoi, request_header):
+def get_site_info(fims_df, aoi):
     """
     Gets site information that can be downloaded/obtained in bulk & needs to be looped at a per site level
     exeptions handled:
@@ -352,7 +361,8 @@ def get_site_info(fims_df, aoi, request_header):
     usgs_fim_df = pd.json_normalize(usgs_fim_json['features'])
 
     if get_partner == False:
-        files_li = glob.glob(out_dir + '/*_' + aoi + '_' + flowstage_src + org_static_fims_fn_suffix)
+        # has to have prior source of data from similar station source (offline/online)
+        files_li = glob.glob(out_dir + '/*_' + aoi + '_' + org_static_fims_fn_suffix2)
         last_partner_fullfn = max(files_li, key=os.path.getctime)
         partner_df = pd.read_csv(last_partner_fullfn)
         logging.info('site scraping for nwps only, nationalmaps and fema data pulled from: ' + os.path.split(last_partner_fullfn)[1])
@@ -469,13 +479,13 @@ def get_site_info(fims_df, aoi, request_header):
             lid_df = org_thresh_imp_df.merge(fims_df, left_on='lid', right_on='ahps_lid', how='left').drop('ahps_lid', axis=1)
             
             if external_count == 0 and start_index == 0:
-                org_row.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + org_static_fims_fn_suffix), index=False)
-                thresh_imp_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + nwps_impact_fn_suffix), index=False)
-                lid_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + combined_out_fn_suffix), index=False)
+                org_row.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + org_static_fims_fn_suffix2), index=False)
+                thresh_imp_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + nwps_impact_fn_suffix2), index=False)
+                lid_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + combined_out_fn_suffix2), index=False)
             else:
-                org_row.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + org_static_fims_fn_suffix), index=False, mode='a', header=False)
-                thresh_imp_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + nwps_impact_fn_suffix), index=False, mode='a', header=False)
-                lid_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + combined_out_fn_suffix), index=False, mode='a', header=False)
+                org_row.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + org_static_fims_fn_suffix2), index=False, mode='a', header=False)
+                thresh_imp_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + nwps_impact_fn_suffix2), index=False, mode='a', header=False)
+                lid_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + combined_out_fn_suffix2), index=False, mode='a', header=False)
 
             external_count += 1
 
@@ -497,10 +507,8 @@ def get_site_info(fims_df, aoi, request_header):
     return return_df, org_static_fim_df
     
 def main():
-    with open(os.path.join(ctrl_dir, yaml_fn)) as f:
-    # NWRFC settings for request headers, keeping hidden in yaml file
-        yaml_data = yaml.full_load(f)
-        request_header = {'User-Agent' : yaml_data['user_agent']}
+
+
 
     stage_cols = pd.read_csv(os.path.join(ctrl_dir, stage_columns_fn))
     flow_cols = pd.read_csv(os.path.join(ctrl_dir, flow_columns_fn))
@@ -514,8 +522,8 @@ def main():
     for aoi in aois_li:
         logging.info(aoi + ' metadata gathering has started')
         
-        stage_df = convert_fim_json_df(aoi, 'stage', request_header)
-        flow_df = convert_fim_json_df(aoi, 'flow', request_header)
+        stage_df = convert_fim_json_df(aoi, 'stage')
+        flow_df = convert_fim_json_df(aoi, 'flow')
 
         stage_want_df = stage_df.loc[:, stage_want_cols]
         fim_want_df = flow_df.loc[:, flow_want_cols]
@@ -525,14 +533,14 @@ def main():
         # join stage and flow static fim info and remove endlines
         static_fims_df = stage_want_org_df.merge(fim_want_df, on='ahps_lid', suffixes=('_stage', '_flow')).replace(r'\n', '', regex=True).sort_values('ahps_lid')
 
-        all_site_df, org_static_fim_df = get_site_info(static_fims_df, aoi, request_header)
+        all_site_df, org_static_fim_df = get_site_info(static_fims_df, aoi)
 
         # writing out site by site instead
         #final_df = site_df.merge(static_fims_df, left_on='lid', right_on='ahps_lid', how='left').drop('ahps_lid', axis=1)
         #final_df.to_csv(out_dir + combined_out_fn, index=False)
 
         #site_df.to_csv(out_dir + nwps_impact_fn, index=False)
-        static_fims_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + flowstage_src + raw_static_fims_fn_suffix), index=False)
+        static_fims_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + raw_static_fims_fn_suffix2), index=False)
 
         logging.info(aoi + ' metadata gathering has finished')
 

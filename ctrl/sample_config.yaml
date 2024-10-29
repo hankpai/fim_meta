@@ -1,2 +1,4 @@
 ---
 user_agent: 'Mozilla' 
+station_src: 'online' # sources: offline (fim_libs > static_stage/flow_based_catfim_noaa; login required), online (fim_libs > static_stage/flow_based_catfim)
+nwm_aep_src: 'online' # sources: offline (fim_libs > nwm_aep_inundation_extent_library_noaa; login required), online (reference > static_nwm_flowlines; no login)

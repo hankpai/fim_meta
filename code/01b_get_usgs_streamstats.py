@@ -2,7 +2,7 @@
 # contact info:         henry <dot> pai <at> noaa <dot> gov
 # last edit by:         hp
 # last edit time:       Oct 2024
-# last edit comment:    edited to return all USGS streamstats
+# last edit comment:    edited to return all USGS streamstats, and chooses non-regulatory aep's if available
 
 # summary:
 # aggregates AEP stats from USGS; note NWM stats from USGS Bulletin 17C eq. 11 - implemented, but not output as values were >> usgs stats
@@ -44,7 +44,6 @@ import pdb
 # common AEP's of interest, leaving as strings to avoid potential rounding errors in array intersections
 aep_li = ['0.2', '1', '2', '4', '10', '20', '50']
 calc_nwm = False
-catfim_src = 'offline' # offline/online
 
 # ===== debugging var
 start_index = 0 # 285 crli2 for CR, good test for regulated, multiple aep methods
@@ -65,13 +64,22 @@ yaml_fn = 'config.yaml'
 areas_fn = 'nws_aois.csv'
 
 # input file info
-catfim_meta_fn_suffix = '_catFim_meta.csv'
+catfim_meta_fn_suffix1 = '_catFim_meta.csv'
 
 # output files
 log_fn = 'usgs_streamstats.log'
 out_fn_prefix = pd.Timestamp.now().strftime('%Y%m%d') + '_'
-full_usgs_fn_suffix = '_usgs_all_streamstats.csv'
-slim_usgs_fn_suffix = '_usgs_slim_streamstats.csv'
+full_usgs_fn_suffix1 = '_usgsAllStats.csv'
+slim_usgs_fn_suffix1 = '_usgsSlimStats.csv'
+
+with open(os.path.join(ctrl_dir, yaml_fn)) as f:
+# NWRFC settings for request headers, keeping hidden in yaml file
+# not super happy to make this global
+    yaml_data = yaml.full_load(f)
+    request_header = {'User-Agent' : yaml_data['user_agent']}
+    catfim_meta_fn_suffix2 = '_' + yaml_data['station_src'] + 'Stalist' + catfim_meta_fn_suffix1
+    full_usgs_fn_suffix2 =  '_' + yaml_data['station_src'] + 'Stalist' + full_usgs_fn_suffix1
+    slim_usgs_fn_suffix2 = '_' + yaml_data['station_src'] + 'Stalist' + slim_usgs_fn_suffix1
 
 # ===== url info
 usgs_url_prefix = 'https://streamstats.usgs.gov/gagestatsservices/statistics?statisticGroups=pfs&stationIDOrCode='
@@ -219,7 +227,7 @@ def insert_site_meta(df, row):
     df.insert(0, 'wfo', row.nws_data_wfo)
     df.insert(0, 'ahps_lid', row.ahps_lid)
     
-def get_site_info(mapping_df, request_header, aoi, ds):
+def get_site_info(mapping_df, aoi, ds):
     """
     loop through getting usgs streamstats and attempted NWM retrospective v3 streamstats
     """
@@ -293,11 +301,6 @@ def get_site_info(mapping_df, request_header, aoi, ds):
     return(return_pref_df, return_all_df)
     
 def main():
-    with open(os.path.join(ctrl_dir, yaml_fn)) as f:
-    # NWRFC settings for request headers, keeping hidden in yaml file
-        yaml_data = yaml.full_load(f)
-        request_header = {'User-Agent' : yaml_data['user_agent']}
-    
     areas_df = pd.read_csv(os.path.join(ctrl_dir, areas_fn))
     aois_li = areas_df.loc[areas_df['include'] == 'x']['area'].tolist()
     
@@ -310,7 +313,7 @@ def main():
 
     for aoi in aois_li:
         logging.info(aoi + ' streamstats gathering has started')
-        files_li = glob.glob(in_dir + '/*_' + aoi + '_' + catfim_src + catfim_meta_fn_suffix)
+        files_li = glob.glob(in_dir + '/*_' + aoi + catfim_meta_fn_suffix2)
         last_catfim_fullfn = max(files_li, key=os.path.getctime)
         logging.info(aoi + ' is using ' + last_catfim_fullfn + ' for getting stats')
         catfim_df = pd.read_csv(last_catfim_fullfn)
@@ -323,7 +326,7 @@ def main():
                                  'nwm_feature_data_stream_order',
                                  'rating_max_flow']]
         
-        stats_df, all_df = get_site_info(usgs_map_df, request_header, aoi, ds)
+        stats_df, all_df = get_site_info(usgs_map_df, aoi, ds)
 
         simple_df = stats_df[['ahps_lid', 
                               'wfo', 
@@ -336,8 +339,8 @@ def main():
                                                     columns='aep_percent', 
                                                     values='usgsFlow_cfs') 
         
-        all_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + catfim_src + full_usgs_fn_suffix), index=False)
-        simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + '_' + catfim_src + slim_usgs_fn_suffix))
+        all_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + full_usgs_fn_suffix2), index=False)
+        simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + slim_usgs_fn_suffix2))
 
         logging.info(aoi + ' streamstats gathering has finished')
     
