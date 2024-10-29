@@ -1,8 +1,8 @@
 # original author(s):   henry pai (nwrfc)
 # contact info:         henry <dot> pai <at> noaa <dot> gov
 # last edit by:         hp
-# last edit time:       Sep 2024
-# last edit comment:    simple script mapping nws lids to nwm segments
+# last edit time:       Oct 2024
+# last edit comment:    small update for file names
 
 # summary: 
 # making call field_id ESRI/database call, select * where field_id in ('<id1>', '<id2>', etc.) where ids are nwm segs
@@ -11,6 +11,7 @@ import os
 import pathlib
 import glob
 import pandas as pd
+import yaml
 import pdb
 
 # ===== global/user vars (not path related)
@@ -22,6 +23,9 @@ ctrl_dir = os.path.join(work_dir, "ctrl")   # csv files controlling columns and 
 in_catfim_dir = os.path.join(work_dir, 'out', 'catfim')
 in_stats_dir = os.path.join(work_dir, 'out', 'stats')
 out_dir = os.path.join(work_dir, "out", "db_calls")
+
+# yaml file
+yaml_fn = 'config.yaml'
 
 # contorl file indicating wfos/rfcs to scrape
 areas_fn = 'nws_aois.csv'

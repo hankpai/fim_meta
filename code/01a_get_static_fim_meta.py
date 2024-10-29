@@ -77,7 +77,7 @@ import yaml
 import pdb
 
 # ===== global/user vars (not path related)
-get_partner = False  # gets usgs DEM and fema hazard info if True
+get_partner = True  # gets usgs DEM and fema hazard info if True
 
 # in NWPS, if both flow and stage are populated, the code takes care of 'most cases' in the function: check_threshold_type
 # the site below is still a flow threshold site, but has both flow and stage populated in the api metadata
@@ -187,7 +187,8 @@ def convert_fim_json_df(aoi, param):
         aoi_caps = aoi.upper()
 
         # needed to turn this cert off for home
-        http = urllib3.PoolManager(cert_reqs='CERT_NONE')
+        #http = urllib3.PoolManager(cert_reqs='CERT_NONE')
+        http = urllib3.PoolManager()
 
         nws_esri_params = {
                     'where': query_loc_id + " = '" + aoi_caps + "'",

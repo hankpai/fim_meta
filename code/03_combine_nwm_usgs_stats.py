@@ -2,7 +2,7 @@
 # contact info:         henry <dot> pai <at> noaa <dot> gov
 # last edit by:         hp
 # last edit time:       Oct 2024
-# last edit comment:    added option to scrape the static_nwm_flowlines which also has
+# last edit comment:    added option to scrape the static_nwm_flowlines which also has aep's
 
 # summary:
 # Motivated by Table 4 in https://doi.org/10.5194/nhess-19-2405-2019 - essentially as nMAE rises > 60%, FIM accuracy degrades significantly
@@ -104,7 +104,7 @@ logging.basicConfig(format='%(asctime)s %(levelname)-4s %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
 # ===== functions
-def org_nwm_aeps(nwm_seg_df, aoi, request_header):
+def org_nwm_aeps(nwm_seg_df, aoi):
     """
     inputs: aep (one percentile value at a time) copy & paste nwm files, region of interest
     output: df of just nwm segment and flow associated with aep val 
@@ -147,7 +147,7 @@ def org_nwm_aeps(nwm_seg_df, aoi, request_header):
         return_df = pd.concat(loop_li, axis=1)
     elif yaml_data['nwm_aep_src'] == 'online':
         # needed to turn this cert off for home
-        http = urllib3.PoolManager(cert_reqs='CERT_NONE')
+        http = urllib3.PoolManager()
 
         for i in range(0, len(nwm_seg_df), max_nwm_ids):
             logging.info(aoi + ' ' + yaml_data['nwm_aep_src'] + ' nwm aep data aggregation started for index starting at ' + str(i))
@@ -209,11 +209,6 @@ def calc_norm_err(usgs_df, nwm_df):
     return(return_df)
 
 def main():
-    with open(os.path.join(ctrl_dir, yaml_fn)) as f:
-    # NWRFC settings for request headers, keeping hidden in yaml file
-        yaml_data = yaml.full_load(f)
-        request_header = {'User-Agent' : yaml_data['user_agent']}
-        
     areas_df = pd.read_csv(os.path.join(ctrl_dir, areas_fn))
     aois_li = areas_df.loc[areas_df['include'] == 'x']['area'].tolist()
 
@@ -243,7 +238,7 @@ def main():
 
         nwm_seg_df = usgs_df[['ahps_lid']].merge(catfim_df[['ahps_lid', 'nwm_seg']])
 
-        nwm_stats_df = org_nwm_aeps(nwm_seg_df, aoi, request_header)
+        nwm_stats_df = org_nwm_aeps(nwm_seg_df, aoi)
 
         merged_df = usgs_org_df.merge(nwm_stats_df, left_index=True, right_index=True)
         
