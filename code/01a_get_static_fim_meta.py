@@ -77,7 +77,7 @@ import yaml
 import pdb
 
 # ===== global/user vars (not path related)
-get_partner = True  # gets usgs DEM and fema hazard info if True
+get_partner = False  # gets usgs DEM and fema hazard info if True
 
 # in NWPS, if both flow and stage are populated, the code takes care of 'most cases' in the function: check_threshold_type
 # the site below is still a flow threshold site, but has both flow and stage populated in the api metadata
@@ -362,7 +362,7 @@ def get_site_info(fims_df, aoi):
 
     if get_partner == False:
         # has to have prior source of data from similar station source (offline/online)
-        files_li = glob.glob(out_dir + '/*_' + aoi + '_' + org_static_fims_fn_suffix2)
+        files_li = glob.glob(out_dir + '/*_' + aoi + org_static_fims_fn_suffix2)
         last_partner_fullfn = max(files_li, key=os.path.getctime)
         partner_df = pd.read_csv(last_partner_fullfn)
         logging.info('site scraping for nwps only, nationalmaps and fema data pulled from: ' + os.path.split(last_partner_fullfn)[1])
@@ -461,7 +461,7 @@ def get_site_info(fims_df, aoi):
                         logging.info(lid + ' has malformed epoch') # msbm8 11/14/2019
 
             else:
-                dem_resolution = partner_df[partner_df['ahps_lid'] == lid]['dem_resolution'].iloc[0]
+                dem_resolution = partner_df[partner_df['ahps_lid'] == lid]['dem_res_m'].iloc[0]
                 dem_yr = partner_df[partner_df['ahps_lid'] == lid]['dem_yr'].iloc[0]
                 fema_effective_date = partner_df[partner_df['ahps_lid'] == lid]['fema_eff_date'].iloc[0]
 
