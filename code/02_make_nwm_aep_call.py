@@ -27,12 +27,19 @@ out_dir = os.path.join(work_dir, "out", "db_calls")
 areas_fn = 'nws_aois.csv'
 
 # input file info
-catfim_meta_fn_suffix = '_catFim_meta.csv'
-stats_fn_suffix = '_usgs_slim_streamstats.csv'
+catfim_meta_fn_suffix1 = '_catFim_meta.csv'
+stats_fn_suffix1 = '_usgsSlimStats.csv'
 
 # output files
 out_fn_prefix = pd.Timestamp.now().strftime('%Y%m%d') + '_'
 out_fn_suffix = '_nwm_aep_stats.txt'
+
+with open(os.path.join(ctrl_dir, yaml_fn)) as f:
+# NWRFC settings for request headers, keeping hidden in yaml file
+# not super happy to make this global
+    yaml_data = yaml.full_load(f)
+    catfim_meta_fn_suffix2 = '_' + yaml_data['station_src'] + 'Stalist' + catfim_meta_fn_suffix1
+    stats_fn_suffix2 = '_' + yaml_data['station_src'] + 'Stalist' + stats_fn_suffix1
 
 # ===== functions
 def main():
@@ -40,11 +47,11 @@ def main():
     aois_li = areas_df.loc[areas_df['include'] == 'x']['area'].tolist()
 
     for aoi in aois_li:
-        catfim_files_li = glob.glob(in_catfim_dir + '/*_' + aoi + catfim_meta_fn_suffix)
+        catfim_files_li = glob.glob(in_catfim_dir + '/*_' + aoi + catfim_meta_fn_suffix2)
         last_catfim_fullfn = max(catfim_files_li, key=os.path.getctime)
         catfim_df = pd.read_csv(last_catfim_fullfn)
 
-        stats_files_li = glob.glob(in_stats_dir + '/*_' + aoi + stats_fn_suffix)
+        stats_files_li = glob.glob(in_stats_dir + '/*_' + aoi + stats_fn_suffix2)
         last_stats_fullfn = max(stats_files_li, key=os.path.getctime)
         usgs_df = pd.read_csv(last_stats_fullfn)
 

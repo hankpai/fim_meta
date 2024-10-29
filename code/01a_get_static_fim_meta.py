@@ -507,9 +507,6 @@ def get_site_info(fims_df, aoi):
     return return_df, org_static_fim_df
     
 def main():
-
-
-
     stage_cols = pd.read_csv(os.path.join(ctrl_dir, stage_columns_fn))
     flow_cols = pd.read_csv(os.path.join(ctrl_dir, flow_columns_fn))
 
