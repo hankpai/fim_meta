@@ -21,8 +21,8 @@ Steps for running:
 1. Pull repo
 2. Make in, out, logs and associated subdirectories
 3. Change control files (in ctrl directory)
-   1. Copy/create __config.yaml__ file and specify header to be more descriptive
-   2. Change/add Area Of Interest (aoi) in __nws_aois.csv__ with 'x'
+   1. Copy/create __config.yaml__ file and specify header to be more descriptive, and choose sources for ESRI rest products (online if areas of interest, aoi, are public)
+   2. Change/add aoi in __nws_aois.csv__ with 'x'
    3. Edit columns to retain in __flow_fim_column_ids.csv__ and __stage_fim_column_ids.csv__
 4. Run scripts sequentually
    1. __01a_get_static_fim_meta.py__ - inputs (1.i, 1.ii, 2, 3, 4, 5, 7, all control files), outputs (1, 2, 3, 4), issues: USGS DEP query API times out often, overcome options: change __start_index__ variable to last index before timeout, bulk query for Data Input (6), set __get_partner__ to False if have prior downloaded file
@@ -48,14 +48,14 @@ Data inputs:
 8. USGS streamstats api: https://streamstats.usgs.gov/gagestatsservices/
 
 Data outputs:
-1. __out/catfim/[yyyymmdd]\_[aoi]\_[source = online/offline]\_raw_catFim_meta.csv__ - all locations from Data Inputs (1.i & 1.ii) with some column merging from flow and stage based categorical FIM
-2. __out/catfim/[yyyymmdd]\_[aoi]\_[source = online/offline]\_catFim_meta.csv__ - locations that exist on NWPS, pulled from above file (Data Output 1) and adding multiple metadata from NWPS, USGS, FEMA (Data Inputs 2, 3, 4, 5, 7)
-3. __out/catfim/[yyyymmdd]\_[aoi]\_[source = online/offline]\_impacts_meta.csv__ - combining impacts & thresholds at various stage/flow values along with some point metadata (Data input 4)
-4. __out/catfim/[yyyymmdd]\_[aoi]\_[source = online/offline]\_catFimReview_meta_stagePrioritized_wExceptions.csv__ - combining Data Output (2 & 3) for final output; stage thresholds are generally prioritized (see Issues below) and exceptions are hardcoded in (so flow threshold site(s))
-5. __out/stats/[yyyymmdd]\_[aoi]\_[source = online/offline]\_usgs_all_streamstats.csv__ - verbose export for USGS streamstats outputting all flavors of usgs streamstats along with preferred columns. 
-6. __out/stats/[yyyymmdd]\_[aoi]\_[source = online/offline]\_usgs_slim_streamstats.csv__ - slimmed export for USGS streamstats, removing some metadata.  Generally preferred weighted AEP regression, unless otherwise stated (preference from communication via correspondence with Oregon USGS, but may vary by state).  Note, several Montana sites are downstream of reservoirs and they explicitly AEP is related to regulated and not naturalized flow
+1. __out/catfim/[yyyymmdd]\_[aoi]\_[source = (online/offline)Stalist]\_rawCatFim_meta.csv__ - all locations from Data Inputs (1.i & 1.ii) with some column merging from flow and stage based categorical FIM
+2. __out/catfim/[yyyymmdd]\_[aoi]\_[source = (online/offline)Stalist]\_catFim_meta.csv__ - locations that exist on NWPS, pulled from above file (Data Output 1) and adding multiple metadata from NWPS, USGS, FEMA (Data Inputs 2, 3, 4, 5, 7)
+3. __out/catfim/[yyyymmdd]\_[aoi]\_[source = (online/offline)Stalist]\_impacts_meta.csv__ - combining impacts & thresholds at various stage/flow values along with some point metadata (Data input 4)
+4. __out/catfim/[yyyymmdd]\_[aoi]\_[source = (online/offline)Stalist]\_catFimImpacts_meta.csv__ - combining Data Output (2 & 3) for final output; stage thresholds are generally prioritized (see Issues below) and exceptions are hardcoded in (so flow threshold site(s))
+5. __out/stats/[yyyymmdd]\_[aoi]\_[source = (online/offline)Stalist]\_usgsAllStats.csv__ - verbose export for USGS streamstats outputting all flavors of usgs streamstats along with preferred columns. 
+6. __out/stats/[yyyymmdd]\_[aoi]\_[source = (online/offline)Stalist]\_usgsSlimStats.csv__ - slimmed export for USGS streamstats, removing some metadata.  Generally preferred weighted AEP regression, unless otherwise stated (preference from communication via correspondence with Oregon USGS, but may vary by state).  Note, several Montana sites are downstream of reservoirs and they explicitly AEP is related to regulated and not naturalized flow
 7. __out/db_calls/[yyyymmdd]\_[aoi]\_nwm_aep_stats.csv__ - OPTIONAL, generating query for ArcGIS Pro ESRI call
-8. __out/stats/[yyyymmdd]\_[aoi]\_[source = online/offline]\_stats_normErr.csv__ - aggregates USGS and NRP AEP's and calculates normalized error to provide some caution noted in Reference 1
+8. __out/stats/[yyyymmdd]\_[aoi]\_[source = (online/offline)NwmAep]\_[station source = (online/offline)Stalist]\_statsCompare.csv__ - aggregates USGS and NRP AEP's and calculates normalized error to provide some caution noted in Reference 1
 
 References:
 1. https://nhess.copernicus.org/articles/19/2405/2019/ - Table 4 highlights error in inundated area with flow error (starts to grow when flow error > 60%)
