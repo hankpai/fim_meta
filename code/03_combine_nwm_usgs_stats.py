@@ -169,6 +169,8 @@ def org_nwm_aeps(nwm_seg_df, aoi):
                     'outFields': '*',
                     'f': 'pjson'
                 }
+
+            #pdb.set_trace()
             
             flowline_url = flowline_base_url + urllib.parse.urlencode(flowline_params)
             flowline_response = http.request('GET', flowline_url, headers = request_header)

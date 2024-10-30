@@ -46,7 +46,7 @@ aep_li = ['0.2', '1', '2', '4', '10', '20', '50']
 calc_nwm = False
 
 # ===== debugging var
-start_index = 0 # 285 crli2 for CR, good test for regulated, multiple aep methods
+start_index = 136 # 285 crli2 for CR, good test for regulated, multiple aep methods
 #start_index = 398 # should be used when debugging, otherwise comment out
 
 # ===== directories & filenames (site/computer specific)
@@ -164,6 +164,7 @@ def org_usgs(usgs_json, ahps_lid):
                     logging.info(ahps_lid + ' has multiple flows per percent, most frequent citation chosen')
                 else:
                     assign_pref_df = test_pref_df
+                pdb.set_trace()
             else:
                 # so, some exception handling as aftw3 (usgs: 05430500) has two methods that are 'preferred'
                 # so handling the by choosing the most 'frequent' preferred method
@@ -317,16 +318,23 @@ def main():
         last_catfim_fullfn = max(files_li, key=os.path.getctime)
         logging.info(aoi + ' is using ' + last_catfim_fullfn + ' for getting stats')
         catfim_df = pd.read_csv(last_catfim_fullfn)
-
+        
         usgs_map_df = catfim_df[['ahps_lid',
                                  'nwm_seg',
                                  'usgs_gage',
                                  'nws_data_wfo',
                                  'rfc_headwater',
                                  'nwm_feature_data_stream_order',
-                                 'rating_max_flow']]
+                                 'rating_max_flow']].drop_duplicates().reset_index(drop=True)
+
+        if len(catfim_df) > len(usgs_map_df):
+            # alaska/hawaii has some duplicate rows for nlih1
+            print('there are duplicate rows from the catfim meta file')
+            logging.info(aoi + ' has duplicate rows in ' + last_catfim_fullfn)
         
         stats_df, all_df = get_site_info(usgs_map_df, aoi, ds)
+
+        all_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + full_usgs_fn_suffix2), index=False)
 
         simple_df = stats_df[['ahps_lid', 
                               'wfo', 
@@ -339,7 +347,6 @@ def main():
                                                     columns='aep_percent', 
                                                     values='usgsFlow_cfs') 
         
-        all_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + full_usgs_fn_suffix2), index=False)
         simple_df.to_csv(os.path.join(out_dir, out_fn_prefix + aoi + slim_usgs_fn_suffix2))
 
         logging.info(aoi + ' streamstats gathering has finished')
