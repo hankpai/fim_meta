@@ -46,7 +46,7 @@ aep_li = ['0.2', '1', '2', '4', '10', '20', '50']
 calc_nwm = False
 
 # ===== debugging var
-start_index = 136 # 285 crli2 for CR, good test for regulated, multiple aep methods
+start_index = 0 # 285 crli2 for CR, good test for regulated, multiple aep methods
 #start_index = 398 # should be used when debugging, otherwise comment out
 
 # ===== directories & filenames (site/computer specific)
@@ -145,8 +145,15 @@ def org_usgs(usgs_json, ahps_lid):
         pref_df = usgs_aeps_df[usgs_aeps_df['usgs_pref'] == True]
 
         if pref_df.empty:
+            logging.info(ahps_lid + ' : no preferred usgs stats, choose by nws_pref_order: weighted, station, regression, alternate, other, regulated')
+
             if len(usgs_aeps_df.index) > len(aep_li):
-                final_pref_df = usgs_aeps_df.copy().loc[usgs_aeps_df['nws_pref_order'] == usgs_aeps_df.nws_pref_order.min()].sort_values('usgsFlow_cfs')
+                test_pref_df = usgs_aeps_df.copy().loc[usgs_aeps_df['nws_pref_order'] == usgs_aeps_df.nws_pref_order.min()]
+                if len(test_pref_df) > len(aep_li):
+                    # needed for mhpp1 in marfc
+                    most_frequent_cite = test_pref_df.citationID.mode()[0]
+                    final_pref_df = test_pref_df[test_pref_df.citationID == most_frequent_cite].sort_values('usgsFlow_cfs')
+                    logging.info(ahps_lid + ' has multiple flows per percent, most frequent citation chosen')
             else:
                 final_pref_df = usgs_aeps_df.copy().sort_values('usgsFlow_cfs')
             logging.info(ahps_lid + ' has a no usgs preferred designation')
@@ -154,7 +161,7 @@ def org_usgs(usgs_json, ahps_lid):
             # if there are many preferred, choose weighted (email 2024 Mar).  else choose empirical
             if len(pref_df.index) > len(aep_li):
                 test_pref_df = pref_df.loc[pref_df['nws_pref_order'] == pref_df.nws_pref_order.min()]
-                logging.info(ahps_lid + ' : no preferred usgs stats, choose by nws_pref_order: weighted, station, regression, alternate, other, regulated')
+                logging.info(ahps_lid + ' : many preferred usgs stats, choose by nws_pref_order: weighted, station, regression, alternate, other, regulated')
                 
                 # if the preferred has old citations, choose the most frequent citation (ensures one flow per percent)
                 # coss2 (usgs: 06482610) is an example
@@ -164,7 +171,7 @@ def org_usgs(usgs_json, ahps_lid):
                     logging.info(ahps_lid + ' has multiple flows per percent, most frequent citation chosen')
                 else:
                     assign_pref_df = test_pref_df
-                pdb.set_trace()
+                
             else:
                 # so, some exception handling as aftw3 (usgs: 05430500) has two methods that are 'preferred'
                 # so handling the by choosing the most 'frequent' preferred method
