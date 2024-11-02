@@ -49,7 +49,8 @@ import pdb
 
 # ===== global/user vars (not path related)
 # common AEP's of interest, leaving as strings to avoid potential rounding errors in array intersections
-aep_li = ['2', '4', '10', '20', '50']
+conus_aep_li = ['2', '4', '10', '20', '50']
+nonconus_aep_li = ['2', '4', '10', '20', '50', '100']
 usgs_keep_cols = ['ahps_lid', 'wfo', 'rfc_headwater', 'nwm_streamOrder', 'usgs_stat_type', 'ratingMax_cfs']
 
 # taken from usbr scraper script as REST/url calls cannot exceed 2048 characters
@@ -93,7 +94,9 @@ with open(os.path.join(ctrl_dir, yaml_fn)) as f:
     out_fn_suffix2 =  '_' + yaml_data['nwm_aep_src'] + 'NwmAep_' + yaml_data['station_src'] + 'Stalist' + out_fn_suffix1
 
 # ===== url info
-flowline_base_url = 'https://maps.water.noaa.gov/server/rest/services/reference/static_nwm_flowlines/MapServer/0/query?'
+conus_flowline_base_url = 'https://maps.water.noaa.gov/server/rest/services/reference/static_nwm_flowlines/MapServer/0/query?'
+hi_flowline_base_url = 'https://maps.water.noaa.gov/server/rest/services/reference/static_nwm_flowlines_hi/MapServer/0/query?'
+pr_flowline_base_url = 'https://maps.water.noaa.gov/server/rest/services/reference/static_nwm_flowlines_prvi/MapServer/0/query?'
 
 # ===== initial set up for requests and logging
 logging.basicConfig(format='%(asctime)s %(levelname)-4s %(message)s',
@@ -104,7 +107,7 @@ logging.basicConfig(format='%(asctime)s %(levelname)-4s %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
 # ===== functions
-def org_nwm_aeps(nwm_seg_df, aoi):
+def org_nwm_aeps(nwm_seg_df, aoi, region):
     """
     inputs: aep (one percentile value at a time) copy & paste nwm files, region of interest
     output: df of just nwm segment and flow associated with aep val 
@@ -124,79 +127,97 @@ def org_nwm_aeps(nwm_seg_df, aoi):
     # - oid
     # - geom
 
-    loop_li = []
-
-    if yaml_data['nwm_aep_src'] == 'offline':
-        for i, aep in enumerate(aep_li):
-            # grabbing most recent copy and paste files per aep
-            aep_str = aep.zfill(2)
-            nwm_aep_files_li = glob.glob(in_nwm_aep_dir + '/*_' + aoi + '_' + aep_str + nwm_aep_fns_suffix)
-            last_nwm_aep_fullfn = max(nwm_aep_files_li, key=os.path.getctime)
-            nwm_aep_df = pd.read_csv(last_nwm_aep_fullfn, sep='\t')
-
-            # multiple hydro_ids, so getting unique segments.
-            # ASSUMPTION: only one aep streamflow per nwm segment
-            unique_nwm_aep_df = nwm_aep_df[['NWM Feature ID','Streamflow (cfs)']].drop_duplicates(subset='NWM Feature ID')
-            unique_nwm_aep_df.columns = ['nwm_seg', aep_str + '_nwm']
-
-            lid_nwm_aep_df = nwm_seg_df.merge(unique_nwm_aep_df, how='left').drop('nwm_seg', axis=1).set_index('ahps_lid')
-
-            loop_li.append(lid_nwm_aep_df)
-
-        # merging/concatenating
-        return_df = pd.concat(loop_li, axis=1)
-    elif yaml_data['nwm_aep_src'] == 'online':
-        # needed to turn this cert off for home
-        http = urllib3.PoolManager()
-
-        for i in range(0, len(nwm_seg_df), max_nwm_ids):
-            logging.info(aoi + ' ' + yaml_data['nwm_aep_src'] + ' nwm aep data aggregation started for index starting at ' + str(i))
-            # subsetting and generating call
-            nwm_seg_subset_df = nwm_seg_df.iloc[i:(i + max_nwm_ids)]
-            nwm_segs_li = nwm_seg_subset_df['nwm_seg'].tolist() # still works ok if i + max_nwm_ids > total len of df
-            nwm_str1 = ','.join(f"'{str(i)}'" for i in nwm_segs_li)
-            final_nwm_str = '(' + nwm_str1 + ')'
-
-            # setting some return period/frequency and aep labels up
-            rf_str_li = ['rf_' + str(int(1/(int(aep)/100))) for aep in aep_li] # generating return frequency/period string (2% AEP = 50 yr flood)
-            aep_str_li = [aep.zfill(2) + "_nwm" for aep in aep_li]
-            rf_aep_dict = dict(zip(rf_str_li, aep_str_li))
-
-            flowline_params = {
-                    #'where': "feature_id in ('22937978','23940255')", # testing
-                    'where': "feature_id in " + final_nwm_str,
-                    'returnGeometry': 'false',
-                    'outFields': '*',
-                    'f': 'pjson'
-                }
-
-            #pdb.set_trace()
-            
-            flowline_url = flowline_base_url + urllib.parse.urlencode(flowline_params)
-            flowline_response = http.request('GET', flowline_url, headers = request_header)
-            flowline_json = json.loads(flowline_response.data.decode('utf8'))
-            flowline_df = pd.json_normalize(flowline_json, 'features')
-            flowline_df.columns = [col.split('.')[-1] for col in flowline_df.columns] # removing some column name prefixes
-            
-            # narrowing search to just return frequency/period columns
-            col_search_str = '|'.join(rf_str_li)
-            nwm_aep_df = flowline_df.loc[:, flowline_df.columns.str.contains(col_search_str)]
-
-            # mapping columns to aep's, renaming, and adding nwm_seg columns
-            # https://stackoverflow.com/questions/65966008/rename-columns-based-on-substring-and-dict-in-python
-            regex = re.compile(r'^rf_(\d+)*')
-            nwm_aep_df.columns = [rf_aep_dict[regex.match(colname)[0]] for colname in nwm_aep_df.columns]
-            nwm_aep_df.loc[:, ['nwm_seg']] = pd.to_numeric(flowline_df['feature_id'])
-
-            online_nwm_aep_df = nwm_seg_subset_df.merge(nwm_aep_df, how='left').drop('nwm_seg', axis=1).set_index('ahps_lid')
-
-            loop_li.append(online_nwm_aep_df)
-        
-        return_df = pd.concat(loop_li, axis=0)
+    # handling non-conus stuff
+    if region == 'conus':
+        aep_li = conus_aep_li
+        nwm_aep_url = conus_flowline_base_url
     else:
-        logging.error('incorrect source provided (options: online, offline)')
+        aep_li = nonconus_aep_li
+        if region == 'hi':
+            nwm_aep_url = hi_flowline_base_url
+        elif region == 'pr':
+            nwm_aep_url = pr_flowline_base_url
+            
+    if nwm_seg_df.empty:
+        return_df = None   
+    else:
+        loop_li = []
+        if yaml_data['nwm_aep_src'] == 'offline':
+            for i, aep in enumerate(aep_li):
+                # grabbing most recent copy and paste files per aep
+                aep_str = aep.zfill(2)
+                nwm_aep_files_li = glob.glob(in_nwm_aep_dir + '/*_' + aoi + '_' + aep_str + nwm_aep_fns_suffix)
+                last_nwm_aep_fullfn = max(nwm_aep_files_li, key=os.path.getctime)
+                nwm_aep_df = pd.read_csv(last_nwm_aep_fullfn, sep='\t')
+
+                # multiple hydro_ids, so getting unique segments.
+                # ASSUMPTION: only one aep streamflow per nwm segment
+                unique_nwm_aep_df = nwm_aep_df[['NWM Feature ID','Streamflow (cfs)']].drop_duplicates(subset='NWM Feature ID')
+                unique_nwm_aep_df.columns = ['nwm_seg', aep_str + '_nwm']
+
+                lid_nwm_aep_df = nwm_seg_df.merge(unique_nwm_aep_df, how='left').drop('nwm_seg', axis=1).set_index('ahps_lid')
+
+                loop_li.append(lid_nwm_aep_df)
+
+            # merging/concatenating
+            return_df = pd.concat(loop_li, axis=1)
+        elif yaml_data['nwm_aep_src'] == 'online':
+            # needed to turn this cert off for home
+            http = urllib3.PoolManager()
+
+            for i in range(0, len(nwm_seg_df), max_nwm_ids):
+                logging.info(aoi + ' ' + yaml_data['nwm_aep_src'] + ' nwm aep data aggregation started for index starting at ' + str(i))
+                # subsetting and generating call
+                nwm_seg_subset_df = nwm_seg_df.iloc[i:(i + max_nwm_ids)]
+                nwm_segs_li = nwm_seg_subset_df['nwm_seg'].tolist() # still works ok if i + max_nwm_ids > total len of df
+                nwm_str1 = ','.join(f"'{str(i)}'" for i in nwm_segs_li)
+                final_nwm_str = '(' + nwm_str1 + ')'
+
+                # setting some return period/frequency and aep labels up
+                rf_str_li = ['rf_' + str(int(1/(int(aep)/100))) for aep in aep_li] # generating return frequency/period string (2% AEP = 50 yr flood)
+                aep_str_li = [aep.zfill(2) + "_nwm" for aep in aep_li]
+                rf_aep_dict = dict(zip(rf_str_li, aep_str_li))
+
+                flowline_params = {
+                        #'where': "feature_id in ('22937978','23940255')", # testing
+                        'where': "feature_id in " + final_nwm_str,
+                        'returnGeometry': 'false',
+                        'outFields': '*',
+                        'f': 'pjson'
+                    }
+
+                flowline_url = nwm_aep_url + urllib.parse.urlencode(flowline_params)
+                flowline_response = http.request('GET', flowline_url, headers = request_header)
+                flowline_json = json.loads(flowline_response.data.decode('utf8'))
+                flowline_df = pd.json_normalize(flowline_json, 'features')
+                flowline_df.columns = [col.split('.')[-1] for col in flowline_df.columns] # removing some column name prefixes
+                
+                # narrowing search to just return frequency/period columns
+                col_search_str = '|'.join(rf_str_li)
+                nwm_aep_df = flowline_df.loc[:, flowline_df.columns.str.contains(col_search_str)]
+
+                # mapping columns to aep's, renaming, and adding nwm_seg columns
+                # https://stackoverflow.com/questions/65966008/rename-columns-based-on-substring-and-dict-in-python
+                regex = re.compile(r'^rf_(\d+)*')
+                nwm_aep_df.columns = [rf_aep_dict[regex.match(colname)[0]] for colname in nwm_aep_df.columns]
+                nwm_aep_df.loc[:, ['nwm_seg']] = pd.to_numeric(flowline_df['feature_id'])
+
+                online_nwm_aep_df = nwm_seg_subset_df.merge(nwm_aep_df, how='left').drop('nwm_seg', axis=1).set_index('ahps_lid')
+
+                loop_li.append(online_nwm_aep_df)
+            
+            return_df = pd.concat(loop_li, axis=0)
+        else:
+            logging.error('incorrect source provided (options: online, offline)')
 
     return(return_df)
+
+def org_usgs_aeps(usgs_df, aoi, region):
+    """
+    inputs: aep (one percentile value at a time) copy & paste nwm files, region of interest
+    output: df of just nwm segment and flow associated with aep val 
+    challenge: some duplicates due to more hydro_id's than nwm_segments, assume's same streamflow @ aep per hydro_id
+    """
 
 def calc_norm_err(usgs_df, nwm_df):
     """
@@ -214,10 +235,9 @@ def main():
     areas_df = pd.read_csv(os.path.join(ctrl_dir, areas_fn))
     aois_li = areas_df.loc[areas_df['include'] == 'x']['area'].tolist()
 
-    usgs_aep_cols_li = [format(float(i), '.1f') for i in aep_li]
-    usgs_aep_rename_li = [i.zfill(2) + '_usgs' for i in aep_li]
-
     for aoi in aois_li:
+        # testing, hard code aoi while running upstream data code, which take longer to run and have more scraping requirements
+        #aoi = 'aprfc'
         logging.info(aoi + ' AEP stats aggregation has started for NWM source ' + yaml_data['nwm_aep_src'])
         
         # some repetition here with script
@@ -232,16 +252,30 @@ def main():
         logging.info('catfim file loaded: ' + last_catfim_fullfn)
         logging.info('usgs stats file loaded: ' + usgs_last_stats_fullfn)
 
+        
+
+        
+        usgs_aep_cols_li = [format(float(i), '.1f') for i in aep_li]
+        usgs_aep_rename_li = [i.zfill(2) + '_usgs' for i in aep_li]
         # selecting aep's of interest (leaves out 0.2 and 1), reduce and add help flatten lists
-        usgs_aep_df = usgs_df[functools.reduce(operator.add, [usgs_keep_cols, usgs_aep_cols_li])] 
+        usgs_aep_df = usgs_df[functools.reduce(operator.add, [usgs_keep_cols, usgs_aep_cols_li])]
 
         # renaming usgs cols, 2nd answer: https://stackoverflow.com/questions/47343838/how-to-change-column-names-in-pandas-dataframe-using-a-list-of-names 
         usgs_org_df = usgs_aep_df.rename(columns=dict(zip(usgs_aep_cols_li, usgs_aep_rename_li))).set_index('ahps_lid')
 
+
         nwm_seg_df = usgs_df[['ahps_lid']].merge(catfim_df[['ahps_lid', 'nwm_seg']])
 
-        nwm_stats_df = org_nwm_aeps(nwm_seg_df, aoi)
+        hi_seg_df = nwm_seg_df[nwm_seg_df.ahps_lid.str.contains('h1')] # hawaii
+        pr_seg_df = nwm_seg_df[nwm_seg_df.ahps_lid.str.contains('p4')] # puerto rico/virgin islands
+        conus_seg_df = pd.concat([nwm_seg_df, hi_seg_df, pr_seg_df]).drop_duplicates(keep=False)
 
+        conus_stats_df = org_nwm_aeps(conus_seg_df, aoi, "conus")
+        hi_stats_df = org_nwm_aeps(hi_seg_df, aoi, "hi")
+        pr_stats_df = org_nwm_aeps(pr_seg_df, aoi, "pr")
+
+        nwm_stats_df = pd.concat([conus_stats_df, hi_stats_df, pr_stats_df])
+        
         merged_df = usgs_org_df.merge(nwm_stats_df, left_index=True, right_index=True)
         
         usgs_slim_df = usgs_org_df[usgs_aep_rename_li]

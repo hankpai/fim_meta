@@ -154,6 +154,9 @@ def org_usgs(usgs_json, ahps_lid):
                     most_frequent_cite = test_pref_df.citationID.mode()[0]
                     final_pref_df = test_pref_df[test_pref_df.citationID == most_frequent_cite].sort_values('usgsFlow_cfs')
                     logging.info(ahps_lid + ' has multiple flows per percent, most frequent citation chosen')
+                else:
+                    # needed for pdes1
+                    final_pref_df = test_pref_df.sort_values('usgsFlow_cfs')
             else:
                 final_pref_df = usgs_aeps_df.copy().sort_values('usgsFlow_cfs')
             logging.info(ahps_lid + ' has a no usgs preferred designation')
@@ -188,7 +191,7 @@ def org_usgs(usgs_json, ahps_lid):
             # sorting
             final_pref_df = assign_pref_df.copy().sort_values('usgsFlow_cfs')
 
-    # inserting nws/my preference 
+    # inserting nws/my preference
     same_row_ids = pd.merge(usgs_aeps_df.reset_index(), final_pref_df, on=final_pref_df.columns.tolist())['index'].tolist()
     usgs_aeps_df.insert(0, 'nws_pref', False)
     usgs_aeps_df.loc[same_row_ids, ['nws_pref']] = True
