@@ -45,6 +45,10 @@ import pdb
 aep_li = ['0.2', '1', '2', '4', '10', '20', '50']
 calc_nwm = False
 
+# mapping stat type to first word of description
+stat_dict = {'WPK' : 'weighted', 'PK' : 'station', 'RPK' : 'regression', 'APK' : 'alternate', 'UPK' : 'urban', 'GPK' : 'regulated'}
+nws_pref_dict = {'WPK' : 1, 'PK' : 2, 'RPK' : 3, 'APK' : 4, 'UPK' : 9, 'GPK' : 10}
+
 # ===== debugging var
 start_index = 0 # 285 crli2 for CR, good test for regulated, multiple aep methods
 #start_index = 398 # should be used when debugging, otherwise comment out
@@ -136,11 +140,8 @@ def org_usgs(usgs_json, ahps_lid):
                                      #'description' : 'usgs_description'}, inplace=True)
 
         # second answer: https://stackoverflow.com/questions/9987483/elif-in-list-comprehension-conditionals
-        # mapping stat type to first word of description
-        stat_dict = {'WPK' : 'weighted', 'PK' : 'station', 'RPK' : 'regression', 'APK' : 'alternate', 'GPK' : 'regulated'}
-        nws_pref_dict = {'WPK' : 1, 'PK' : 2, 'RPK' : 3, 'APK' : 4, 'GPK' : 10}
         usgs_aeps_df['usgs_stat_type'] = [stat_dict.get(re.sub(r'\d+', ' ', code).split(' ')[0], 'other') for code in usgs_aeps_df['code']]
-        usgs_aeps_df['nws_pref_order'] = [nws_pref_dict.get(re.sub(r'\d+', ' ', code).split(' ')[0], ) for code in usgs_aeps_df['code']]
+        usgs_aeps_df['nws_pref_order'] = [nws_pref_dict.get(re.sub(r'\d+', ' ', code).split(' ')[0], 5) for code in usgs_aeps_df['code']]
         usgs_aeps_df.loc[usgs_aeps_df['usgs_stat_type'] == 'regulated', 'usgs_pref'] = False  # regulated should be used as last result, want naturalized flow
         pref_df = usgs_aeps_df[usgs_aeps_df['usgs_pref'] == True]
 

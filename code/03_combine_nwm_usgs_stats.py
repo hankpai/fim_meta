@@ -1,8 +1,8 @@
 # original author(s):   henry pai (nwrfc)
 # contact info:         henry <dot> pai <at> noaa <dot> gov
 # last edit by:         hp
-# last edit time:       Oct 2024
-# last edit comment:    added option to scrape the static_nwm_flowlines which also has aep's
+# last edit time:       Nov 2024
+# last edit comment:    handling oconus
 
 # summary:
 # Motivated by Table 4 in https://doi.org/10.5194/nhess-19-2405-2019 - essentially as nMAE rises > 60%, FIM accuracy degrades significantly
@@ -50,7 +50,7 @@ import pdb
 # ===== global/user vars (not path related)
 # common AEP's of interest, leaving as strings to avoid potential rounding errors in array intersections
 conus_aep_li = ['2', '4', '10', '20', '50']
-nonconus_aep_li = ['2', '4', '10', '20', '50', '100']
+oconus_aep_li = ['1', '2', '4', '10', '20', '50']
 usgs_keep_cols = ['ahps_lid', 'wfo', 'rfc_headwater', 'nwm_streamOrder', 'usgs_stat_type', 'ratingMax_cfs']
 
 # taken from usbr scraper script as REST/url calls cannot exceed 2048 characters
@@ -132,7 +132,7 @@ def org_nwm_aeps(nwm_seg_df, aoi, region):
         aep_li = conus_aep_li
         nwm_aep_url = conus_flowline_base_url
     else:
-        aep_li = nonconus_aep_li
+        aep_li = oconus_aep_li
         if region == 'hi':
             nwm_aep_url = hi_flowline_base_url
         elif region == 'pr':
@@ -243,7 +243,7 @@ def main():
         # some repetition here with script
         catfim_files_li = glob.glob(in_catfim_dir + '/*_' + aoi + catfim_meta_fn_suffix2)
         last_catfim_fullfn = max(catfim_files_li, key=os.path.getctime)
-        catfim_df = pd.read_csv(last_catfim_fullfn)
+        catfim_df = pd.read_csv(last_catfim_fullfn).drop_duplicates().reset_index(drop=True)
 
         usgs_stats_files_li = glob.glob(stats_dir + '/*_' + aoi + usgs_stats_fn_suffix2)
         usgs_last_stats_fullfn = max(usgs_stats_files_li, key=os.path.getctime)
@@ -252,17 +252,21 @@ def main():
         logging.info('catfim file loaded: ' + last_catfim_fullfn)
         logging.info('usgs stats file loaded: ' + usgs_last_stats_fullfn)
 
-        
+        oconus_usgs_df = usgs_df.loc[usgs_df.ahps_lid.str.contains('|'.join(['h1', 'p4'])), ]
 
-        
+        if oconus_usgs_df.empty:
+            aep_li = conus_aep_li
+        else:
+            aep_li = oconus_aep_li
+
         usgs_aep_cols_li = [format(float(i), '.1f') for i in aep_li]
         usgs_aep_rename_li = [i.zfill(2) + '_usgs' for i in aep_li]
+
         # selecting aep's of interest (leaves out 0.2 and 1), reduce and add help flatten lists
         usgs_aep_df = usgs_df[functools.reduce(operator.add, [usgs_keep_cols, usgs_aep_cols_li])]
 
         # renaming usgs cols, 2nd answer: https://stackoverflow.com/questions/47343838/how-to-change-column-names-in-pandas-dataframe-using-a-list-of-names 
         usgs_org_df = usgs_aep_df.rename(columns=dict(zip(usgs_aep_cols_li, usgs_aep_rename_li))).set_index('ahps_lid')
-
 
         nwm_seg_df = usgs_df[['ahps_lid']].merge(catfim_df[['ahps_lid', 'nwm_seg']])
 
@@ -274,7 +278,7 @@ def main():
         hi_stats_df = org_nwm_aeps(hi_seg_df, aoi, "hi")
         pr_stats_df = org_nwm_aeps(pr_seg_df, aoi, "pr")
 
-        nwm_stats_df = pd.concat([conus_stats_df, hi_stats_df, pr_stats_df])
+        nwm_stats_df = pd.concat([hi_stats_df, pr_stats_df, conus_stats_df])
         
         merged_df = usgs_org_df.merge(nwm_stats_df, left_index=True, right_index=True)
         
