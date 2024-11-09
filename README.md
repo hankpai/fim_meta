@@ -25,7 +25,7 @@ Steps for running:
    2. Change/add aoi in __nws_aois.csv__ with 'x'
    3. Edit columns to retain in __flow_fim_column_ids.csv__ and __stage_fim_column_ids.csv__
 4. Run scripts sequentually
-   1. __01a_get_static_fim_meta.py__ - inputs (1.i, 1.ii, 2, 3, 4, 5, 7, all control files), outputs (1, 2, 3, 4), issues: USGS DEP query API times out often, overcome options: change __start_index__ variable to last index before timeout, bulk query for Data Input (6), set __get_partner__ to False if have prior downloaded file
+   1. __01a_get_static_fim_meta.py__ - inputs (1.i, 1.ii, 2, 3, 4, 5, 7, all control files), outputs (1, 2, 3, 4), issues: USGS DEP query API times out often and FEMA source at times offline, overcome options: change __start_index__ variable to last index before timeout, bulk query for Data Input (6), set __get_partner__ to False if have prior downloaded file
    2. __1b_get_usgs_streamstats.py__ - inputs (8, output 2, aoi and yaml control files), outputs (5 & 6)
    3. OPTIONAL if relying on offline ArcGIS Pro SQL search call - this step could go away
       1. __02_make_nwm_aep_call.py__ - inputs (outputs 2 & 6, aoi control file), output (7)
