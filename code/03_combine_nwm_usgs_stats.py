@@ -51,7 +51,7 @@ import pdb
 # common AEP's of interest, leaving as strings to avoid potential rounding errors in array intersections
 conus_aep_li = ['2', '4', '10', '20', '50']
 oconus_aep_li = ['1', '2', '4', '10', '20', '50']
-usgs_keep_cols = ['ahps_lid', 'wfo', 'rfc_headwater', 'nwm_streamOrder', 'usgs_stat_type', 'ratingMax_cfs']
+usgs_keep_cols = ['ahps_lid', 'wfo', 'hsa', 'rfc_headwater', 'nwm_streamOrder', 'usgs_stat_type', 'ratingMax_cfs']
 
 # taken from usbr scraper script as REST/url calls cannot exceed 2048 characters
 # 100 nwm stream reach ids generated url of 1867 characters while 110 generated 2037
@@ -211,13 +211,6 @@ def org_nwm_aeps(nwm_seg_df, aoi, region):
             logging.error('incorrect source provided (options: online, offline)')
 
     return(return_df)
-
-def org_usgs_aeps(usgs_df, aoi, region):
-    """
-    inputs: aep (one percentile value at a time) copy & paste nwm files, region of interest
-    output: df of just nwm segment and flow associated with aep val 
-    challenge: some duplicates due to more hydro_id's than nwm_segments, assume's same streamflow @ aep per hydro_id
-    """
 
 def calc_norm_err(usgs_df, nwm_df):
     """

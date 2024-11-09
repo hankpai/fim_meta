@@ -77,7 +77,7 @@ import yaml
 import pdb
 
 # ===== global/user vars (not path related)
-get_partner = True  # gets usgs DEM and fema hazard info if True
+get_partner = False  # gets usgs DEM and fema hazard info if True
 
 # in NWPS, if both flow and stage are populated, the code takes care of 'most cases' in the function: check_threshold_type
 # the site below is still a flow threshold site, but has both flow and stage populated in the api metadata
@@ -365,7 +365,7 @@ def get_site_info(fims_df, aoi):
         # has to have prior source of data from similar station source (offline/online)
         files_li = glob.glob(out_dir + '/*_' + aoi + org_static_fims_fn_suffix2)
         last_partner_fullfn = max(files_li, key=os.path.getctime)
-        partner_df = pd.read_csv(last_partner_fullfn)
+        partner_df = pd.read_csv(last_partner_fullfn).fillna('')
         logging.info('site scraping for nwps only, nationalmaps and fema data pulled from: ' + os.path.split(last_partner_fullfn)[1])
     else:
         logging.info('site scraping (nwps, nationalmaps, fema) begins')

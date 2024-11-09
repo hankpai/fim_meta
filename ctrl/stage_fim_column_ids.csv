@@ -9,7 +9,7 @@ usgs_data_name,,y
 huc8,,
 identifiers_goes_id,,y
 nws_data_wfo,,y
-nws_data_hsa,,
+nws_data_hsa,,y
 nws_data_rfc,,y
 states,,y
 nws_data_county,,y
