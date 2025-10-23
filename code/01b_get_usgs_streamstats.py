@@ -129,7 +129,7 @@ def org_usgs(usgs_json, ahps_lid):
                                       .str.split('PK', expand=True)[1]\
                                       .str.replace('_', '.')
 
-        usgs_row_idxs = np.nonzero(np.in1d(usgs_aeps, aep_li))[0].tolist()  # getting row indices from aep percent to then pluck from perf_df
+        usgs_row_idxs = np.nonzero(np.isin(usgs_aeps, aep_li))[0].tolist()  # getting row indices from aep percent to then pluck from perf_df
 
         usgs_aeps_df = aep_all_df.copy().iloc[usgs_row_idxs].reset_index(drop=True)
         usgs_aeps_df['aep_percent'] = [float(i) for i in usgs_aeps[usgs_row_idxs].reset_index(drop=True)]

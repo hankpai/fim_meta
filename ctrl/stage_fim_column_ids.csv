@@ -6,7 +6,7 @@ nwm_seg,,y
 nwm_feature_data_stream_order,,y
 usgs_gage,,y
 usgs_data_name,,y
-huc8,,
+huc8,,y
 identifiers_goes_id,,y
 nws_data_wfo,,y
 nws_data_hsa,,y
