@@ -1,4 +1,5 @@
 # ignoring various files and directories
+archive/*
 ctrl/config.yaml
 ctrl/*.xlsx
 ctrl/*.png

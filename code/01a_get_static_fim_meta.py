@@ -77,7 +77,7 @@ import yaml
 import pdb
 
 # ===== global/user vars (not path related)
-get_partner = False  # gets usgs DEM and fema hazard info if True
+get_partner = True  # gets usgs DEM and fema hazard info if True
 
 # in NWPS, if both flow and stage are populated, the code takes care of 'most cases' in the function: check_threshold_type
 # the site below is still a flow threshold site, but has both flow and stage populated in the api metadata
@@ -271,7 +271,8 @@ def check_threshold_type(lid, obs_primary_unit, thresholds_df, rating_df, impact
         impacts_df.rename(columns={impacts_df.columns[0]:'impact_val'}, inplace=True)
 
     # joins threshold and impacts table, fills in missing stages/flows depending on threshold type
-    thresh_imp_df = org_thresholds_df.merge(impacts_df, left_on=threshold_type, right_on='impact_val', how='outer')
+    # line below will warn if there are impacts not at same intervals as thresholds
+    thresh_imp_df = org_thresholds_df.merge(impacts_df, left_on=threshold_type, right_on='impact_val', how='outer') 
     thresh_imp_df['merge_thresholds'] = thresh_imp_df[threshold_type].where(thresh_imp_df[threshold_type].notnull(), thresh_imp_df['impact_val'])
     thresh_imp_df[threshold_type] = thresh_imp_df['merge_thresholds']
         
